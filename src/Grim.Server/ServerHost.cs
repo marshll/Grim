@@ -8,6 +8,7 @@ public sealed class ServerHost
 {
     private readonly TcpListener _listener;
     private readonly WorldLoop _world = new();
+    private readonly SessionRegistry _sessions = new();
 
     public ServerHost(int port)
     {
@@ -82,8 +83,8 @@ public sealed class ServerHost
         }
 
         var loginRequest = NetworkCodec.DeserializePayload<LoginRequest>(loginFrame);
-        var sessionId = Guid.NewGuid();
-        var loginResponse = new LoginResponse(true, "ok", sessionId);
+        var session = _sessions.Register(loginRequest.AccountName);
+        var loginResponse = new LoginResponse(true, "ok", session.SessionId);
 
         await NetworkCodec.WriteMessageAsync(
             stream,
@@ -91,16 +92,74 @@ public sealed class ServerHost
             loginResponse,
             cancellationToken);
 
-        var snapshot = new WorldSnapshot(
-            _world.Tick,
-            [new EntitySnapshot(new EntityId(Guid.NewGuid()), new Vector3Snapshot(0, 0, 0), 0f)]);
+        Console.WriteLine($"Client bootstrapped: {endpoint} ({loginRequest.AccountName}) session={session.SessionId}");
 
-        await NetworkCodec.WriteMessageAsync(
-            stream,
-            "world_snapshot",
-            new WorldSnapshotMessage(snapshot),
-            cancellationToken);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var receiveTask = ReceiveClientLoopAsync(session.SessionId, stream, endpoint, linkedCts.Token);
+        var replicateTask = ReplicationLoopAsync(session.SessionId, stream, linkedCts.Token);
 
-        Console.WriteLine($"Client bootstrapped: {endpoint} ({loginRequest.AccountName})");
+        var completedTask = await Task.WhenAny(receiveTask, replicateTask);
+        linkedCts.Cancel();
+
+        try
+        {
+            await Task.WhenAll(receiveTask, replicateTask);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (IOException)
+        {
+        }
+        finally
+        {
+            _sessions.Remove(session.SessionId);
+            Console.WriteLine($"Client disconnected: {endpoint} session={session.SessionId}");
+        }
+    }
+
+    private async Task ReceiveClientLoopAsync(
+        Guid sessionId,
+        NetworkStream stream,
+        string endpoint,
+        CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var frame = await NetworkCodec.ReadMessageAsync(stream, cancellationToken);
+            if (frame is null)
+            {
+                return;
+            }
+
+            if (string.Equals(frame.MessageType, "movement_intent", StringComparison.Ordinal))
+            {
+                var intent = NetworkCodec.DeserializePayload<MovementIntentMessage>(frame);
+                _sessions.ApplyMovementIntent(sessionId, intent);
+                continue;
+            }
+
+            Console.WriteLine($"Unknown message from {endpoint}: {frame.MessageType}");
+        }
+    }
+
+    private async Task ReplicationLoopAsync(Guid sessionId, NetworkStream stream, CancellationToken cancellationToken)
+    {
+        var interval = TimeSpan.FromMilliseconds(100);
+        var deltaSeconds = (float)interval.TotalSeconds;
+
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            _sessions.AdvanceSession(sessionId, deltaSeconds);
+
+            var snapshot = _sessions.CreateSnapshot(_world.Tick);
+            await NetworkCodec.WriteMessageAsync(
+                stream,
+                "world_snapshot",
+                new WorldSnapshotMessage(snapshot),
+                cancellationToken);
+
+            await Task.Delay(interval, cancellationToken);
+        }
     }
 }

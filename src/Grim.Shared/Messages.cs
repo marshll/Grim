@@ -10,6 +10,8 @@ public sealed record LoginRequest(string AccountName);
 
 public sealed record LoginResponse(bool Accepted, string Reason, Guid SessionId);
 
+public sealed record MovementIntentMessage(float MoveX, float MoveZ, float YawRadians);
+
 public sealed record Vector3Snapshot(float X, float Y, float Z);
 
 public sealed record EntitySnapshot(EntityId Id, Vector3Snapshot Position, float YawRadians);

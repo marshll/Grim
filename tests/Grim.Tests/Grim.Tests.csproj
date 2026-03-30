@@ -15,5 +15,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Grim.Shared\Grim.Shared.csproj" />
+    <ProjectReference Include="..\..\src\Grim.Server\Grim.Server.csproj" />
   </ItemGroup>
 </Project>

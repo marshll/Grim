@@ -1,0 +1,106 @@
+using System.Collections.Concurrent;
+using Grim.Shared;
+
+namespace Grim.Server;
+
+public sealed class SessionRegistry
+{
+    private readonly ConcurrentDictionary<Guid, SessionState> _sessions = new();
+    private const float MovementSpeedUnitsPerSecond = 4f;
+
+    public SessionState Register(string accountName)
+    {
+        var sessionId = Guid.NewGuid();
+        var entityId = new EntityId(Guid.NewGuid());
+        var state = new SessionState(
+            sessionId,
+            entityId,
+            accountName,
+            new Vector3Snapshot(0, 0, 0),
+            new MovementIntentMessage(0, 0, 0));
+
+        _sessions[sessionId] = state;
+        return state;
+    }
+
+    public void Remove(Guid sessionId)
+    {
+        _sessions.TryRemove(sessionId, out _);
+    }
+
+    public bool ApplyMovementIntent(Guid sessionId, MovementIntentMessage intent)
+    {
+        if (!_sessions.TryGetValue(sessionId, out var state))
+        {
+            return false;
+        }
+
+        lock (state.Sync)
+        {
+            state.Intent = intent;
+        }
+
+        return true;
+    }
+
+    public void AdvanceSession(Guid sessionId, float deltaSeconds)
+    {
+        if (!_sessions.TryGetValue(sessionId, out var state))
+        {
+            return;
+        }
+
+        lock (state.Sync)
+        {
+            var dx = state.Intent.MoveX * MovementSpeedUnitsPerSecond * deltaSeconds;
+            var dz = state.Intent.MoveZ * MovementSpeedUnitsPerSecond * deltaSeconds;
+
+            state.Position = new Vector3Snapshot(
+                state.Position.X + dx,
+                state.Position.Y,
+                state.Position.Z + dz);
+
+            state.YawRadians = state.Intent.YawRadians;
+        }
+    }
+
+    public WorldSnapshot CreateSnapshot(long tick)
+    {
+        var entities = new List<EntitySnapshot>(_sessions.Count);
+
+        foreach (var state in _sessions.Values)
+        {
+            lock (state.Sync)
+            {
+                entities.Add(new EntitySnapshot(state.EntityId, state.Position, state.YawRadians));
+            }
+        }
+
+        return new WorldSnapshot(tick, entities);
+    }
+}
+
+public sealed class SessionState
+{
+    public SessionState(
+        Guid sessionId,
+        EntityId entityId,
+        string accountName,
+        Vector3Snapshot position,
+        MovementIntentMessage intent)
+    {
+        SessionId = sessionId;
+        EntityId = entityId;
+        AccountName = accountName;
+        Position = position;
+        Intent = intent;
+    }
+
+    public object Sync { get; } = new();
+    public Guid SessionId { get; }
+    public EntityId EntityId { get; }
+    public string AccountName { get; }
+    public Vector3Snapshot Position { get; set; }
+    public MovementIntentMessage Intent { get; set; }
+    public float YawRadians { get; set; }
+}

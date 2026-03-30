@@ -22,12 +22,12 @@ public sealed class ClientBootstrap : IGameModule
         {
             try
             {
-                var status = await _networkClient.ConnectAndBootstrapAsync(
+                await _networkClient.ConnectAndRunAsync(
                     "127.0.0.1",
                     7777,
                     "dev_account",
+                    status => _runtime.NetworkStatus = status,
                     CancellationToken.None);
-                _runtime.NetworkStatus = status;
             }
             catch (Exception ex)
             {

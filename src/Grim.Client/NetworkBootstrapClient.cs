@@ -5,16 +5,17 @@ namespace Grim.Client;
 
 public sealed class NetworkBootstrapClient
 {
-    public async Task<string> ConnectAndBootstrapAsync(
+    public async Task ConnectAndRunAsync(
         string host,
         int port,
         string accountName,
+        Action<string> onStatus,
         CancellationToken cancellationToken)
     {
         using var tcpClient = new TcpClient();
         await tcpClient.ConnectAsync(host, port, cancellationToken);
 
-        using var stream = tcpClient.GetStream();
+        await using var stream = tcpClient.GetStream();
 
         await NetworkCodec.WriteMessageAsync(
             stream,
@@ -56,15 +57,62 @@ public sealed class NetworkBootstrapClient
             throw new InvalidOperationException($"Login rejected: {loginResponse.Reason}");
         }
 
-        var snapshotFrame = await NetworkCodec.ReadMessageAsync(stream, cancellationToken)
-            ?? throw new InvalidDataException("No world snapshot from server");
+        onStatus($"Connected | Session {loginResponse.SessionId}");
 
-        if (!string.Equals(snapshotFrame.MessageType, "world_snapshot", StringComparison.Ordinal))
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var receiveTask = ReceiveSnapshotsAsync(stream, onStatus, linkedCts.Token);
+        var sendTask = SendMovementIntentsAsync(stream, linkedCts.Token);
+
+        await Task.WhenAny(receiveTask, sendTask);
+        linkedCts.Cancel();
+
+        try
         {
-            throw new InvalidDataException($"Unexpected frame: {snapshotFrame.MessageType}");
+            await Task.WhenAll(receiveTask, sendTask);
         }
+        catch (OperationCanceledException)
+        {
+        }
+    }
 
-        var snapshotMessage = NetworkCodec.DeserializePayload<WorldSnapshotMessage>(snapshotFrame);
-        return $"Connected | Session {loginResponse.SessionId} | Entities: {snapshotMessage.Snapshot.Entities.Count}";
+    private static async Task ReceiveSnapshotsAsync(
+        NetworkStream stream,
+        Action<string> onStatus,
+        CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var frame = await NetworkCodec.ReadMessageAsync(stream, cancellationToken)
+                ?? throw new IOException("Server closed connection");
+
+            if (!string.Equals(frame.MessageType, "world_snapshot", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var snapshotMessage = NetworkCodec.DeserializePayload<WorldSnapshotMessage>(frame);
+            onStatus($"Replicating | Tick {snapshotMessage.Snapshot.Tick} | Entities: {snapshotMessage.Snapshot.Entities.Count}");
+        }
+    }
+
+    private static async Task SendMovementIntentsAsync(NetworkStream stream, CancellationToken cancellationToken)
+    {
+        var interval = TimeSpan.FromMilliseconds(100);
+        var phase = 0;
+
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var direction = (phase / 40) % 2 == 0 ? 1f : -1f;
+            var intent = new MovementIntentMessage(direction, 0f, 0f);
+
+            await NetworkCodec.WriteMessageAsync(
+                stream,
+                "movement_intent",
+                intent,
+                cancellationToken);
+
+            phase++;
+            await Task.Delay(interval, cancellationToken);
+        }
     }
 }

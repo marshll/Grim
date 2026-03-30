@@ -40,15 +40,15 @@ MMO-first C# game foundation with a MonoGame client host, a headless server skel
 ## Current Scope
 
 - Bootable MonoGame window and render loop.
-- Bootable headless server with tick loop and binary framed handshake/login flow.
+- Bootable headless server with session lifecycle and continuous snapshot replication.
 - Versioned shared protocol models.
 - Shared binary message codec with length-prefixed framing.
-- Initial snapshot bootstrap from server to client.
+- Handshake/login plus movement intent loop between client and server.
 - Content-first modding surface through JSON files.
 
 ## Next Milestones
 
-1. Add continuous replication snapshots and movement intent messages.
+1. Replace synthetic client movement with real input-driven intent messages.
 2. Introduce validated plugin loading for trusted server gameplay mods.
 3. Add ECS-lite gameplay systems and combat pipeline.
 4. Add persistence for account and character session state.

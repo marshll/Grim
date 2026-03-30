@@ -1,0 +1,9 @@
+{
+  "id": "rusty_sword",
+  "name": "Rusty Sword",
+  "slot": "main_hand",
+  "rarity": "common",
+  "stats": {
+    "attackPower": 2
+  }
+}

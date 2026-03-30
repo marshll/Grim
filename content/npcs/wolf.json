@@ -1,0 +1,9 @@
+{
+  "id": "forest_wolf",
+  "name": "Forest Wolf",
+  "level": 2,
+  "faction": "hostile",
+  "abilities": [
+    "bite"
+  ]
+}

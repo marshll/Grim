@@ -1,0 +1,13 @@
+{
+  "id": "start_zone",
+  "name": "Valley of Ash",
+  "recommendedLevelMin": 1,
+  "recommendedLevelMax": 5,
+  "spawnPoints": [
+    {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "wolf_pelts",
+  "name": "Gathering Pelts",
+  "giverNpc": "village_hunter",
+  "objectives": [
+    {
+      "type": "kill",
+      "target": "forest_wolf",
+      "count": 6
+    }
+  ],
+  "rewards": {
+    "xp": 120,
+    "items": [
+      "rusty_sword"
+    ]
+  }
+}

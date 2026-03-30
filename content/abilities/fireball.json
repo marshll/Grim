@@ -1,0 +1,14 @@
+{
+  "id": "fireball",
+  "name": "Fireball",
+  "school": "fire",
+  "castTimeMs": 2500,
+  "cooldownMs": 0,
+  "resourceCost": 20,
+  "effects": [
+    {
+      "type": "damage",
+      "base": 42
+    }
+  ]
+}

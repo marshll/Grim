@@ -40,6 +40,8 @@ public sealed class ClientBootstrap : IGameModule
                     _accountName,
                     _clientTag,
                     status => _runtime.NetworkStatus = status,
+                    sessionId => _runtime.SetLocalSessionId(sessionId),
+                    snapshot => _runtime.UpdateSnapshot(snapshot),
                     CancellationToken.None);
             }
             catch (Exception ex)
@@ -54,7 +56,9 @@ public sealed class ClientBootstrap : IGameModule
     public void Update(TimeSpan deltaTime)
     {
         var netState = _networkStarted ? _runtime.NetworkStatus : "Not started";
-        _runtime.LastStatus = $"Running | Scene Objects: {_runtime.MainScene.Objects.Count} | dt={deltaTime.TotalMilliseconds:F2}ms | Net: {netState}";
+        var snapshotView = _runtime.GetSnapshotView();
+        _runtime.LastStatus =
+            $"Running | Scene Objects: {_runtime.MainScene.Objects.Count} | Tick: {snapshotView.Tick} | Entities: {snapshotView.Entities.Count} | dt={deltaTime.TotalMilliseconds:F2}ms | Net: {netState}";
     }
 
     public void Draw()

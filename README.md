@@ -48,6 +48,14 @@ MMO-first C# game foundation with a MonoGame client host, a headless server skel
 
 The client and server now emit periodic network console logs (handshake/login and snapshot summaries) so you can verify replication in real time.
 
+Client 3D debug controls:
+
+- `W/A/S/D`: pan camera on XZ plane
+- `Q/E`: move camera target up/down
+- `Right Mouse Drag`: orbit camera
+- `Mouse Wheel`: zoom in/out
+- `Space`: re-center camera on replicated entities
+
 ## Current Scope
 
 - Bootable MonoGame window and render loop.

@@ -11,6 +11,8 @@ public sealed class NetworkBootstrapClient
         string accountName,
         string clientTag,
         Action<string> onStatus,
+        Action<Guid> onSessionStarted,
+        Action<WorldSnapshot> onSnapshot,
         CancellationToken cancellationToken)
     {
         var tag = BuildTag(clientTag, accountName);
@@ -63,10 +65,11 @@ public sealed class NetworkBootstrapClient
         }
 
         Console.WriteLine($"{tag} Login accepted; session={loginResponse.SessionId}");
+        onSessionStarted(loginResponse.SessionId);
         onStatus($"Connected | Session {loginResponse.SessionId} | {clientTag}/{accountName}");
 
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var receiveTask = ReceiveSnapshotsAsync(stream, onStatus, tag, clientTag, accountName, linkedCts.Token);
+        var receiveTask = ReceiveSnapshotsAsync(stream, onStatus, onSnapshot, tag, clientTag, accountName, linkedCts.Token);
         var sendTask = SendMovementIntentsAsync(stream, linkedCts.Token);
 
         await Task.WhenAny(receiveTask, sendTask);
@@ -86,6 +89,7 @@ public sealed class NetworkBootstrapClient
     private static async Task ReceiveSnapshotsAsync(
         NetworkStream stream,
         Action<string> onStatus,
+        Action<WorldSnapshot> onSnapshot,
         string tag,
         string clientTag,
         string accountName,
@@ -104,6 +108,7 @@ public sealed class NetworkBootstrapClient
             }
 
             var snapshotMessage = NetworkCodec.DeserializePayload<WorldSnapshotMessage>(frame);
+            onSnapshot(snapshotMessage.Snapshot);
             snapshotsReceived++;
             if (snapshotsReceived == 1 || snapshotsReceived % 10 == 0)
             {

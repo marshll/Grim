@@ -72,7 +72,7 @@ public sealed class SessionRegistry
         {
             lock (state.Sync)
             {
-                entities.Add(new EntitySnapshot(state.EntityId, state.Position, state.YawRadians));
+                entities.Add(new EntitySnapshot(state.EntityId, state.SessionId, state.Position, state.YawRadians));
             }
         }
 

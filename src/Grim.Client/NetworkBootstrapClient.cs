@@ -9,10 +9,13 @@ public sealed class NetworkBootstrapClient
         string host,
         int port,
         string accountName,
+        string clientTag,
         Action<string> onStatus,
         CancellationToken cancellationToken)
     {
+        var tag = BuildTag(clientTag, accountName);
         using var tcpClient = new TcpClient();
+        Console.WriteLine($"{tag} Connecting to {host}:{port}");
         await tcpClient.ConnectAsync(host, port, cancellationToken);
 
         await using var stream = tcpClient.GetStream();
@@ -37,6 +40,8 @@ public sealed class NetworkBootstrapClient
             throw new InvalidOperationException($"Handshake rejected: {handshake.Reason}");
         }
 
+        Console.WriteLine($"{tag} Handshake accepted (protocol v{handshake.ServerProtocolVersion})");
+
         await NetworkCodec.WriteMessageAsync(
             stream,
             "login_request",
@@ -57,10 +62,11 @@ public sealed class NetworkBootstrapClient
             throw new InvalidOperationException($"Login rejected: {loginResponse.Reason}");
         }
 
-        onStatus($"Connected | Session {loginResponse.SessionId}");
+        Console.WriteLine($"{tag} Login accepted; session={loginResponse.SessionId}");
+        onStatus($"Connected | Session {loginResponse.SessionId} | {clientTag}/{accountName}");
 
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var receiveTask = ReceiveSnapshotsAsync(stream, onStatus, linkedCts.Token);
+        var receiveTask = ReceiveSnapshotsAsync(stream, onStatus, tag, clientTag, accountName, linkedCts.Token);
         var sendTask = SendMovementIntentsAsync(stream, linkedCts.Token);
 
         await Task.WhenAny(receiveTask, sendTask);
@@ -73,13 +79,20 @@ public sealed class NetworkBootstrapClient
         catch (OperationCanceledException)
         {
         }
+
+        Console.WriteLine($"{tag} Connection loop ended");
     }
 
     private static async Task ReceiveSnapshotsAsync(
         NetworkStream stream,
         Action<string> onStatus,
+        string tag,
+        string clientTag,
+        string accountName,
         CancellationToken cancellationToken)
     {
+        var snapshotsReceived = 0;
+
         while (!cancellationToken.IsCancellationRequested)
         {
             var frame = await NetworkCodec.ReadMessageAsync(stream, cancellationToken)
@@ -91,7 +104,15 @@ public sealed class NetworkBootstrapClient
             }
 
             var snapshotMessage = NetworkCodec.DeserializePayload<WorldSnapshotMessage>(frame);
-            onStatus($"Replicating | Tick {snapshotMessage.Snapshot.Tick} | Entities: {snapshotMessage.Snapshot.Entities.Count}");
+            snapshotsReceived++;
+            if (snapshotsReceived == 1 || snapshotsReceived % 10 == 0)
+            {
+                Console.WriteLine(
+                    $"{tag} Snapshot rx: tick={snapshotMessage.Snapshot.Tick}, entities={snapshotMessage.Snapshot.Entities.Count}, count={snapshotsReceived}");
+            }
+
+            onStatus(
+                $"Replicating | Tick {snapshotMessage.Snapshot.Tick} | Entities: {snapshotMessage.Snapshot.Entities.Count} | {clientTag}/{accountName}");
         }
     }
 
@@ -114,5 +135,12 @@ public sealed class NetworkBootstrapClient
             phase++;
             await Task.Delay(interval, cancellationToken);
         }
+    }
+
+    private static string BuildTag(string clientTag, string accountName)
+    {
+        var normalizedClientTag = string.IsNullOrWhiteSpace(clientTag) ? "client" : clientTag;
+        var normalizedAccount = string.IsNullOrWhiteSpace(accountName) ? "unknown" : accountName;
+        return $"[CLIENT {normalizedClientTag}:{normalizedAccount}]";
     }
 }

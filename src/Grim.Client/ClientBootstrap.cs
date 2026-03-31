@@ -7,7 +7,19 @@ public sealed class ClientBootstrap : IGameModule
 {
     private readonly ClientRuntimeContext _runtime = new();
     private readonly NetworkBootstrapClient _networkClient = new();
+    private readonly string _host;
+    private readonly int _port;
+    private readonly string _accountName;
+    private readonly string _clientTag;
     private bool _networkStarted;
+
+    public ClientBootstrap(string host, int port, string accountName, string clientTag)
+    {
+        _host = host;
+        _port = port;
+        _accountName = accountName;
+        _clientTag = string.IsNullOrWhiteSpace(clientTag) ? "client" : clientTag;
+    }
 
     public ClientRuntimeContext Runtime => _runtime;
 
@@ -15,17 +27,18 @@ public sealed class ClientBootstrap : IGameModule
     {
         var player = new GameObject("LocalPlayer");
         _runtime.MainScene.Add(player);
-        _runtime.LastStatus = $"Initialized with protocol v{ProtocolVersion.Current}";
-        _runtime.NetworkStatus = "Bootstrapping network";
+        _runtime.LastStatus = $"Initialized with protocol v{ProtocolVersion.Current} | {_clientTag}";
+        _runtime.NetworkStatus = $"Bootstrapping network to {_host}:{_port} as {_accountName}";
 
         _ = Task.Run(async () =>
         {
             try
             {
                 await _networkClient.ConnectAndRunAsync(
-                    "127.0.0.1",
-                    7777,
-                    "dev_account",
+                    _host,
+                    _port,
+                    _accountName,
+                    _clientTag,
                     status => _runtime.NetworkStatus = status,
                     CancellationToken.None);
             }

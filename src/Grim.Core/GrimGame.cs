@@ -7,14 +7,19 @@ namespace Grim.Core;
 public sealed class GrimGame : Game
 {
     private readonly GraphicsDeviceManager _graphics;
-    private readonly ClientBootstrap _client = new();
+    private readonly ClientBootstrap _client;
 
-    public GrimGame()
+    public GrimGame(ClientLaunchOptions launchOptions)
     {
+        _client = new ClientBootstrap(
+            launchOptions.Host,
+            launchOptions.Port,
+            launchOptions.Account,
+            launchOptions.ClientTag);
         _graphics = new GraphicsDeviceManager(this);
         Content.RootDirectory = "Content";
         IsMouseVisible = true;
-        Window.Title = "Grim - MMO Foundation";
+        Window.Title = $"Grim - {launchOptions.ClientTag}";
         _graphics.PreferredBackBufferWidth = 1600;
         _graphics.PreferredBackBufferHeight = 900;
     }

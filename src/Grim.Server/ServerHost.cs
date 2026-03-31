@@ -75,6 +75,8 @@ public sealed class ServerHost
             return;
         }
 
+        Console.WriteLine($"Handshake accepted for {endpoint}: protocol={handshakeRequest.ProtocolVersion}");
+
         var loginFrame = await NetworkCodec.ReadMessageAsync(stream, cancellationToken);
         if (loginFrame is null || !string.Equals(loginFrame.MessageType, "login_request", StringComparison.Ordinal))
         {
@@ -96,7 +98,7 @@ public sealed class ServerHost
 
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var receiveTask = ReceiveClientLoopAsync(session.SessionId, stream, endpoint, linkedCts.Token);
-        var replicateTask = ReplicationLoopAsync(session.SessionId, stream, linkedCts.Token);
+        var replicateTask = ReplicationLoopAsync(session.SessionId, stream, loginRequest.AccountName, linkedCts.Token);
 
         var completedTask = await Task.WhenAny(receiveTask, replicateTask);
         linkedCts.Cancel();
@@ -143,10 +145,15 @@ public sealed class ServerHost
         }
     }
 
-    private async Task ReplicationLoopAsync(Guid sessionId, NetworkStream stream, CancellationToken cancellationToken)
+    private async Task ReplicationLoopAsync(
+        Guid sessionId,
+        NetworkStream stream,
+        string accountName,
+        CancellationToken cancellationToken)
     {
         var interval = TimeSpan.FromMilliseconds(100);
         var deltaSeconds = (float)interval.TotalSeconds;
+        var snapshotsSent = 0;
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -158,6 +165,13 @@ public sealed class ServerHost
                 "world_snapshot",
                 new WorldSnapshotMessage(snapshot),
                 cancellationToken);
+
+            snapshotsSent++;
+            if (snapshotsSent == 1 || snapshotsSent % 10 == 0)
+            {
+                Console.WriteLine(
+                    $"[SERVER] Snapshot tx: session={sessionId}, account={accountName}, tick={snapshot.Tick}, entities={snapshot.Entities.Count}, count={snapshotsSent}");
+            }
 
             await Task.Delay(interval, cancellationToken);
         }

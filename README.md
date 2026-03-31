@@ -37,6 +37,17 @@ MMO-first C# game foundation with a MonoGame client host, a headless server skel
 
 	dotnet run --project src/Grim.Core/Grim.Core.csproj
 
+- Start client with explicit identity/endpoint:
+
+	dotnet run --project src/Grim.Core/Grim.Core.csproj -- --client alpha --account account_alpha --host 127.0.0.1 --port 7777
+
+- Start two clients against one server (use separate terminals):
+
+	dotnet run --project src/Grim.Core/Grim.Core.csproj -- --client alpha --account account_alpha
+	dotnet run --project src/Grim.Core/Grim.Core.csproj -- --client beta --account account_beta
+
+The client and server now emit periodic network console logs (handshake/login and snapshot summaries) so you can verify replication in real time.
+
 ## Current Scope
 
 - Bootable MonoGame window and render loop.

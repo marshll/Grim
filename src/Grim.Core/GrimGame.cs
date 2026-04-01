@@ -1,4 +1,5 @@
 using Grim.Client;
+using Grim.Shared;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -14,6 +15,7 @@ public sealed class GrimGame : Game
     private SpriteBatch? _spriteBatch;
     private Texture2D? _pixel;
     private BasicEffect? _basicEffect;
+    private RuntimeModelRegistry? _modelRegistry;
 
     private double _windowTitleRefreshTimer;
     private float _cameraYaw = 0.8f;
@@ -44,6 +46,25 @@ public sealed class GrimGame : Game
         4, 0, 3, 4, 3, 7,
         3, 2, 6, 3, 6, 7,
         4, 5, 1, 4, 1, 0
+    ];
+
+    private static readonly Vector3[] ObeliskVertices =
+    [
+        new Vector3(-0.55f, 0f, -0.55f),
+        new Vector3(0.55f, 0f, -0.55f),
+        new Vector3(0.55f, 0f, 0.55f),
+        new Vector3(-0.55f, 0f, 0.55f),
+        new Vector3(0f, 2.2f, 0f)
+    ];
+
+    private static readonly short[] ObeliskIndices =
+    [
+        0, 2, 1,
+        0, 3, 2,
+        0, 1, 4,
+        1, 2, 4,
+        2, 3, 4,
+        3, 0, 4
     ];
 
     private static readonly Dictionary<char, string[]> Glyphs = new()
@@ -125,6 +146,8 @@ public sealed class GrimGame : Game
             FogEnd = 80f,
             FogColor = new Vector3(0.05f, 0.07f, 0.11f)
         };
+
+        _modelRegistry = RuntimeModelRegistry.TryLoadFromRepository();
     }
 
     protected override void Update(GameTime gameTime)
@@ -349,6 +372,21 @@ public sealed class GrimGame : Game
         {
             var isLocal = snapshotView.LocalSessionId.HasValue && entity.OwnerSessionId == snapshotView.LocalSessionId.Value;
             var isStatic = entity.OwnerSessionId == Guid.Empty;
+
+            if (isStatic && !string.IsNullOrWhiteSpace(entity.ModelId))
+            {
+                if (TryDrawRegisteredModel(effect, entity, view, projection))
+                {
+                    continue;
+                }
+
+                if (string.Equals(entity.ModelId, "obelisk_v1", StringComparison.Ordinal))
+                {
+                    DrawObelisk3D(effect, entity, view, projection);
+                    continue;
+                }
+            }
+
             var baseColor = isLocal
                 ? new Color(255, 210, 96)
                 : isStatic
@@ -382,6 +420,78 @@ public sealed class GrimGame : Game
                 DrawLocalHighlightRing(effect, entity.Position, view, projection);
             }
         }
+    }
+
+    private void DrawObelisk3D(BasicEffect effect, EntitySnapshot entity, Matrix view, Matrix projection)
+    {
+        effect.TextureEnabled = false;
+        effect.VertexColorEnabled = true;
+
+        var baseColor = new Color(186, 214, 238);
+        var world = Matrix.CreateScale(1.25f) *
+                    Matrix.CreateRotationY(entity.YawRadians) *
+                    Matrix.CreateTranslation(entity.Position.X, entity.Position.Y, entity.Position.Z);
+
+        var vertices = BuildShadedVertices(ObeliskVertices, baseColor);
+
+        effect.World = world;
+        effect.View = view;
+        effect.Projection = projection;
+
+        foreach (var pass in effect.CurrentTechnique.Passes)
+        {
+            pass.Apply();
+            GraphicsDevice.DrawUserIndexedPrimitives(
+                PrimitiveType.TriangleList,
+                vertices,
+                0,
+                vertices.Length,
+                ObeliskIndices,
+                0,
+                ObeliskIndices.Length / 3);
+        }
+    }
+
+    private bool TryDrawRegisteredModel(BasicEffect effect, EntitySnapshot entity, Matrix view, Matrix projection)
+    {
+        if (_modelRegistry is null || string.IsNullOrWhiteSpace(entity.ModelId))
+        {
+            return false;
+        }
+
+        if (!_modelRegistry.TryGetModel(entity.ModelId, GraphicsDevice, out var modelAsset))
+        {
+            return false;
+        }
+
+        var world = Matrix.CreateScale(modelAsset.Scale) *
+                    Matrix.CreateRotationY(entity.YawRadians) *
+                    Matrix.CreateTranslation(entity.Position.X, entity.Position.Y, entity.Position.Z);
+
+        effect.World = world;
+        effect.View = view;
+        effect.Projection = projection;
+        effect.TextureEnabled = true;
+        effect.Texture = modelAsset.Texture;
+        effect.VertexColorEnabled = false;
+
+        foreach (var pass in effect.CurrentTechnique.Passes)
+        {
+            pass.Apply();
+            GraphicsDevice.DrawUserIndexedPrimitives(
+                PrimitiveType.TriangleList,
+                modelAsset.Vertices,
+                0,
+                modelAsset.Vertices.Length,
+                modelAsset.Indices,
+                0,
+                modelAsset.Indices.Length / 3);
+        }
+
+        effect.TextureEnabled = false;
+        effect.Texture = null;
+        effect.VertexColorEnabled = true;
+        return true;
     }
 
     private void DrawLocalHighlightRing(BasicEffect effect, Grim.Shared.Vector3Snapshot position, Matrix view, Matrix projection)
@@ -420,11 +530,16 @@ public sealed class GrimGame : Game
 
     private static VertexPositionColor[] BuildCubeVertices(Color color)
     {
+        return BuildShadedVertices(UnitCubeCorners, color);
+    }
+
+    private static VertexPositionColor[] BuildShadedVertices(IReadOnlyList<Vector3> verticesInput, Color color)
+    {
         var lightDirection = Vector3.Normalize(new Vector3(0.4f, 1f, -0.3f));
-        var vertices = new VertexPositionColor[UnitCubeCorners.Length];
-        for (var i = 0; i < UnitCubeCorners.Length; i++)
+        var vertices = new VertexPositionColor[verticesInput.Count];
+        for (var i = 0; i < verticesInput.Count; i++)
         {
-            var normalApprox = Vector3.Normalize(UnitCubeCorners[i]);
+            var normalApprox = Vector3.Normalize(verticesInput[i]);
             var diffuse = MathF.Max(0f, Vector3.Dot(normalApprox, lightDirection));
             var brightness = 0.45f + (diffuse * 0.55f);
             var litColor = new Color(
@@ -432,7 +547,7 @@ public sealed class GrimGame : Game
                 (byte)Math.Clamp((int)(color.G * brightness), 0, 255),
                 (byte)Math.Clamp((int)(color.B * brightness), 0, 255));
 
-            vertices[i] = new VertexPositionColor(UnitCubeCorners[i], litColor);
+            vertices[i] = new VertexPositionColor(verticesInput[i], litColor);
         }
 
         return vertices;

@@ -20,7 +20,7 @@ public sealed class ServerHost
 
         foreach (var staticObject in zone.StaticObjects)
         {
-            _sessions.RegisterStaticEntity(staticObject.Position, staticObject.YawRadians);
+            _sessions.RegisterStaticEntity(staticObject.Position, staticObject.YawRadians, staticObject.ModelId);
         }
     }
 
@@ -198,7 +198,9 @@ public sealed class ServerHost
         try
         {
             var json = File.ReadAllText(zonePath);
-            var definition = JsonSerializer.Deserialize<ZoneDefinition>(json);
+            var definition = JsonSerializer.Deserialize<ZoneDefinition>(
+                json,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web));
             if (definition is null)
             {
                 Console.WriteLine($"Zone file {zonePath} did not deserialize; using fallback spawn and no static entities.");
@@ -214,7 +216,7 @@ public sealed class ServerHost
             {
                 foreach (var item in definition.StaticObjects)
                 {
-                    staticObjects.Add(new ZoneStaticObject(new Vector3Snapshot(item.X, item.Y, item.Z), item.YawRadians));
+                    staticObjects.Add(new ZoneStaticObject(new Vector3Snapshot(item.X, item.Y, item.Z), item.YawRadians, item.ModelId));
                 }
             }
 
@@ -230,7 +232,7 @@ public sealed class ServerHost
 
     private sealed record ZoneLoadResult(Vector3Snapshot SpawnPoint, IReadOnlyList<ZoneStaticObject> StaticObjects);
 
-    private sealed record ZoneStaticObject(Vector3Snapshot Position, float YawRadians);
+    private sealed record ZoneStaticObject(Vector3Snapshot Position, float YawRadians, string? ModelId);
 
     private sealed class ZoneDefinition
     {
@@ -252,5 +254,6 @@ public sealed class ServerHost
         public float Y { get; init; }
         public float Z { get; init; }
         public float YawRadians { get; init; }
+        public string? ModelId { get; init; }
     }
 }

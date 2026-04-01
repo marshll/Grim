@@ -24,10 +24,10 @@ public sealed class SessionRegistry
         return state;
     }
 
-    public void RegisterStaticEntity(Vector3Snapshot position, float yawRadians = 0f, string? modelId = null)
+    public void RegisterStaticEntity(Vector3Snapshot position, float yawRadians = 0f, string? modelId = null, int? zoneStaticIndex = null)
     {
         var entityId = new EntityId(Guid.NewGuid());
-        _staticEntities[entityId] = new StaticEntityState(entityId, position, yawRadians, modelId);
+        _staticEntities[entityId] = new StaticEntityState(entityId, position, yawRadians, modelId, zoneStaticIndex);
     }
 
     public void Remove(Guid sessionId)
@@ -85,14 +85,14 @@ public sealed class SessionRegistry
 
         foreach (var staticEntity in _staticEntities.Values)
         {
-            entities.Add(new EntitySnapshot(staticEntity.EntityId, Guid.Empty, staticEntity.Position, staticEntity.YawRadians, staticEntity.ModelId));
+            entities.Add(new EntitySnapshot(staticEntity.EntityId, Guid.Empty, staticEntity.Position, staticEntity.YawRadians, staticEntity.ModelId, staticEntity.ZoneStaticIndex));
         }
 
         return new WorldSnapshot(tick, entities);
     }
 }
 
-public sealed record StaticEntityState(EntityId EntityId, Vector3Snapshot Position, float YawRadians, string? ModelId);
+public sealed record StaticEntityState(EntityId EntityId, Vector3Snapshot Position, float YawRadians, string? ModelId, int? ZoneStaticIndex);
 
 public sealed class SessionState
 {

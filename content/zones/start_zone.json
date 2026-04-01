@@ -19,28 +19,32 @@
       "modelId": "obelisk_v1"
     },
     {
-      "x": -8,
+      "x": -6.4727087,
       "y": 0,
-      "z": -10,
-      "yawRadians": 1.1
+      "z": -6.686657,
+      "yawRadians": 1.1,
+      "modelId": null
     },
     {
-      "x": 12,
+      "x": 9.863736,
       "y": 0,
-      "z": 4,
-      "yawRadians": 2.2
+      "z": 3.9384975,
+      "yawRadians": 2.2,
+      "modelId": null
     },
     {
-      "x": -14,
+      "x": -10.8862505,
       "y": 0,
-      "z": 8,
-      "yawRadians": -0.4
+      "z": 2.716961,
+      "yawRadians": -0.4,
+      "modelId": null
     },
     {
-      "x": 0,
+      "x": 3.4764805,
       "y": 0,
-      "z": -16,
-      "yawRadians": 0
+      "z": -12.133883,
+      "yawRadians": 0,
+      "modelId": null
     }
   ]
 }

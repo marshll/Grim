@@ -10,7 +10,7 @@ public static class Program
     }
 }
 
-public sealed record ClientLaunchOptions(string Host, int Port, string Account, string ClientTag)
+public sealed record ClientLaunchOptions(string Host, int Port, string Account, string ClientTag, bool EditorEnabled)
 {
     public static ClientLaunchOptions Parse(string[] args)
     {
@@ -18,6 +18,7 @@ public sealed record ClientLaunchOptions(string Host, int Port, string Account, 
         var port = 7777;
         var account = "dev_account";
         var clientTag = "client";
+        var editorEnabled = false;
 
         for (var i = 0; i < args.Length; i++)
         {
@@ -46,9 +47,15 @@ public sealed record ClientLaunchOptions(string Host, int Port, string Account, 
             if (string.Equals(args[i], "--client", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
             {
                 clientTag = args[++i];
+                continue;
+            }
+
+            if (string.Equals(args[i], "--editor", StringComparison.OrdinalIgnoreCase))
+            {
+                editorEnabled = true;
             }
         }
 
-        return new ClientLaunchOptions(host, port, account, clientTag);
+        return new ClientLaunchOptions(host, port, account, clientTag, editorEnabled);
     }
 }

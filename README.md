@@ -50,11 +50,11 @@ The client and server now emit periodic network console logs (handshake/login an
 
 Client 3D debug controls:
 
-- `W/A/S/D`: pan camera on XZ plane
-- `Q/E`: move camera target up/down
+- `Arrow Keys`: move local player (network intent)
+- Third-person camera automatically follows and pivots around the local player
 - `Right Mouse Drag`: orbit camera
 - `Mouse Wheel`: zoom in/out
-- `Space`: re-center camera on replicated entities
+- `Space`: snap camera behind player movement direction
 
 ## Current Scope
 
@@ -62,12 +62,11 @@ Client 3D debug controls:
 - Bootable headless server with session lifecycle and continuous snapshot replication.
 - Versioned shared protocol models.
 - Shared binary message codec with length-prefixed framing.
-- Handshake/login plus movement intent loop between client and server.
+- Handshake/login plus input-driven movement intent loop between client and server.
 - Content-first modding surface through JSON files.
 
 ## Next Milestones
 
-1. Replace synthetic client movement with real input-driven intent messages.
-2. Introduce validated plugin loading for trusted server gameplay mods.
-3. Add ECS-lite gameplay systems and combat pipeline.
-4. Add persistence for account and character session state.
+1. Introduce validated plugin loading for trusted server gameplay mods.
+2. Add ECS-lite gameplay systems and combat pipeline.
+3. Add persistence for account and character session state.

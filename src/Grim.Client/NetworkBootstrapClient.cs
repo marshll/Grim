@@ -13,6 +13,7 @@ public sealed class NetworkBootstrapClient
         Action<string> onStatus,
         Action<Guid> onSessionStarted,
         Action<WorldSnapshot> onSnapshot,
+        Func<MovementIntentMessage> getMovementIntent,
         CancellationToken cancellationToken)
     {
         var tag = BuildTag(clientTag, accountName);
@@ -70,7 +71,7 @@ public sealed class NetworkBootstrapClient
 
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var receiveTask = ReceiveSnapshotsAsync(stream, onStatus, onSnapshot, tag, clientTag, accountName, linkedCts.Token);
-        var sendTask = SendMovementIntentsAsync(stream, linkedCts.Token);
+        var sendTask = SendMovementIntentsAsync(stream, getMovementIntent, linkedCts.Token);
 
         await Task.WhenAny(receiveTask, sendTask);
         linkedCts.Cancel();
@@ -121,15 +122,16 @@ public sealed class NetworkBootstrapClient
         }
     }
 
-    private static async Task SendMovementIntentsAsync(NetworkStream stream, CancellationToken cancellationToken)
+    private static async Task SendMovementIntentsAsync(
+        NetworkStream stream,
+        Func<MovementIntentMessage> getMovementIntent,
+        CancellationToken cancellationToken)
     {
         var interval = TimeSpan.FromMilliseconds(100);
-        var phase = 0;
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            var direction = (phase / 40) % 2 == 0 ? 1f : -1f;
-            var intent = new MovementIntentMessage(direction, 0f, 0f);
+            var intent = getMovementIntent();
 
             await NetworkCodec.WriteMessageAsync(
                 stream,
@@ -137,7 +139,6 @@ public sealed class NetworkBootstrapClient
                 intent,
                 cancellationToken);
 
-            phase++;
             await Task.Delay(interval, cancellationToken);
         }
     }

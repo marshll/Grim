@@ -8,6 +8,7 @@ public sealed class ClientRuntimeContext
     private readonly object _sync = new();
     private WorldSnapshot? _latestSnapshot;
     private Guid? _localSessionId;
+    private MovementIntentMessage _movementIntent = new(0f, 0f, 0f);
 
     public Scene MainScene { get; } = new();
     public string LastStatus { get; set; } = "Client bootstrapped";
@@ -39,6 +40,22 @@ public sealed class ClientRuntimeContext
             }
 
             return new SnapshotView(_latestSnapshot.Tick, _latestSnapshot.Entities.ToArray(), _localSessionId);
+        }
+    }
+
+    public void SetMovementIntent(float moveX, float moveZ, float yawRadians)
+    {
+        lock (_sync)
+        {
+            _movementIntent = new MovementIntentMessage(moveX, moveZ, yawRadians);
+        }
+    }
+
+    public MovementIntentMessage GetMovementIntent()
+    {
+        lock (_sync)
+        {
+            return _movementIntent;
         }
     }
 }

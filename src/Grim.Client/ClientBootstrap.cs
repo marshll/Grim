@@ -42,6 +42,7 @@ public sealed class ClientBootstrap : IGameModule
                     status => _runtime.NetworkStatus = status,
                     sessionId => _runtime.SetLocalSessionId(sessionId),
                     snapshot => _runtime.UpdateSnapshot(snapshot),
+                    () => _runtime.GetMovementIntent(),
                     CancellationToken.None);
             }
             catch (Exception ex)

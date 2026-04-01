@@ -6,9 +6,10 @@ namespace Grim.Server;
 public sealed class SessionRegistry
 {
     private readonly ConcurrentDictionary<Guid, SessionState> _sessions = new();
+    private readonly ConcurrentDictionary<EntityId, StaticEntityState> _staticEntities = new();
     private const float MovementSpeedUnitsPerSecond = 4f;
 
-    public SessionState Register(string accountName)
+    public SessionState Register(string accountName, Vector3Snapshot? spawnPosition = null)
     {
         var sessionId = Guid.NewGuid();
         var entityId = new EntityId(Guid.NewGuid());
@@ -16,11 +17,17 @@ public sealed class SessionRegistry
             sessionId,
             entityId,
             accountName,
-            new Vector3Snapshot(0, 0, 0),
+            spawnPosition ?? new Vector3Snapshot(0, 0, 0),
             new MovementIntentMessage(0, 0, 0));
 
         _sessions[sessionId] = state;
         return state;
+    }
+
+    public void RegisterStaticEntity(Vector3Snapshot position, float yawRadians = 0f)
+    {
+        var entityId = new EntityId(Guid.NewGuid());
+        _staticEntities[entityId] = new StaticEntityState(entityId, position, yawRadians);
     }
 
     public void Remove(Guid sessionId)
@@ -66,7 +73,7 @@ public sealed class SessionRegistry
 
     public WorldSnapshot CreateSnapshot(long tick)
     {
-        var entities = new List<EntitySnapshot>(_sessions.Count);
+        var entities = new List<EntitySnapshot>(_sessions.Count + _staticEntities.Count);
 
         foreach (var state in _sessions.Values)
         {
@@ -76,9 +83,16 @@ public sealed class SessionRegistry
             }
         }
 
+        foreach (var staticEntity in _staticEntities.Values)
+        {
+            entities.Add(new EntitySnapshot(staticEntity.EntityId, Guid.Empty, staticEntity.Position, staticEntity.YawRadians));
+        }
+
         return new WorldSnapshot(tick, entities);
     }
 }
+
+public sealed record StaticEntityState(EntityId EntityId, Vector3Snapshot Position, float YawRadians);
 
 public sealed class SessionState
 {

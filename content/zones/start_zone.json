@@ -15,7 +15,8 @@
       "x": 6,
       "y": 0,
       "z": -6,
-      "yawRadians": 0.2
+      "yawRadians": 0.2,
+      "modelId": "obelisk_v1"
     },
     {
       "x": -8,

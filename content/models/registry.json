@@ -1,0 +1,9 @@
+{
+  "models": [
+    {
+      "id": "obelisk_v1",
+      "gltfPath": "obelisk_v1/obelisk_v1.gltf",
+      "scale": 1.25
+    }
+  ]
+}

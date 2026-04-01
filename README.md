@@ -48,6 +48,14 @@ MMO-first C# game foundation with a MonoGame client host, a headless server skel
 
 The client and server now emit periodic network console logs (handshake/login and snapshot summaries) so you can verify replication in real time.
 
+First model slice:
+
+- `content/zones/start_zone.json` now supports optional `modelId` on static objects.
+- `modelId: "obelisk_v1"` now resolves through `content/models/registry.json` and loads a runtime glTF asset.
+- `content/models/obelisk_v1/obelisk_v1.gltf` is the first real asset-backed model with texture.
+- Static objects without `modelId` still use cube fallback rendering.
+- If model loading fails, `obelisk_v1` still falls back to the built-in obelisk debug mesh.
+
 Client 3D debug controls:
 
 - `Arrow Keys`: move local player (network intent)
@@ -63,6 +71,7 @@ Client 3D debug controls:
 - Versioned shared protocol models.
 - Shared binary message codec with length-prefixed framing.
 - Handshake/login plus input-driven movement intent loop between client and server.
+- Model-aware static entity replication (`EntitySnapshot.ModelId`) with client fallback rendering.
 - Content-first modding surface through JSON files.
 
 ## Next Milestones

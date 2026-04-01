@@ -42,6 +42,7 @@ public sealed class ClientRuntimeContext
                         start,
                         start,
                         entity.YawRadians,
+                        entity.ModelId,
                         0f,
                         0f,
                         false);
@@ -53,6 +54,7 @@ public sealed class ClientRuntimeContext
                 state.OwnerSessionId = entity.OwnerSessionId;
                 state.AuthoritativePosition = entity.Position;
                 state.YawRadians = entity.YawRadians;
+                state.ModelId = entity.ModelId;
 
                 if (isLocal)
                 {
@@ -107,7 +109,7 @@ public sealed class ClientRuntimeContext
             }
 
             var entities = _entityStates.Values
-                .Select(state => new EntitySnapshot(state.Id, state.OwnerSessionId, state.RenderPosition, state.YawRadians))
+                .Select(state => new EntitySnapshot(state.Id, state.OwnerSessionId, state.RenderPosition, state.YawRadians, state.ModelId))
                 .ToArray();
 
             return new SnapshotView(_latestTick, entities, _localSessionId);
@@ -187,6 +189,7 @@ public sealed class RuntimeEntityState
         Vector3Snapshot renderPosition,
         Vector3Snapshot interpolationStartPosition,
         float yawRadians,
+        string? modelId,
         float interpolationElapsed,
         float interpolationDuration,
         bool hasReconciliation)
@@ -197,6 +200,7 @@ public sealed class RuntimeEntityState
         RenderPosition = renderPosition;
         InterpolationStartPosition = interpolationStartPosition;
         YawRadians = yawRadians;
+        ModelId = modelId;
         InterpolationElapsed = interpolationElapsed;
         InterpolationDuration = interpolationDuration;
         HasReconciliation = hasReconciliation;
@@ -208,6 +212,7 @@ public sealed class RuntimeEntityState
     public Vector3Snapshot RenderPosition { get; set; }
     public Vector3Snapshot InterpolationStartPosition { get; set; }
     public float YawRadians { get; set; }
+    public string? ModelId { get; set; }
     public float InterpolationElapsed { get; set; }
     public float InterpolationDuration { get; set; }
     public float ReconciliationElapsed { get; set; }

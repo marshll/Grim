@@ -20,6 +20,7 @@ public sealed class GrimGame : Game
     private float _cameraPitch = 0.85f;
     private float _cameraDistance = 24f;
     private Vector3 _cameraTarget = Vector3.Zero;
+    private float _playerYawRadians;
     private bool _cameraInitialized;
     private MouseState _previousMouseState;
 
@@ -128,9 +129,9 @@ public sealed class GrimGame : Game
 
     protected override void Update(GameTime gameTime)
     {
-        _client.Update(gameTime.ElapsedGameTime);
-
         var snapshotView = _client.Runtime.GetSnapshotView();
+        HandlePlayerInput();
+        _client.Update(gameTime.ElapsedGameTime);
         HandleCameraInput(snapshotView, (float)gameTime.ElapsedGameTime.TotalSeconds);
 
         _windowTitleRefreshTimer += gameTime.ElapsedGameTime.TotalMilliseconds;
@@ -141,6 +142,47 @@ public sealed class GrimGame : Game
         }
 
         base.Update(gameTime);
+    }
+
+    private void HandlePlayerInput()
+    {
+        var keyboard = Keyboard.GetState();
+        var moveX = 0f;
+        var moveZ = 0f;
+
+        if (keyboard.IsKeyDown(Keys.Left) || keyboard.IsKeyDown(Keys.NumPad4))
+        {
+            moveX -= 1f;
+        }
+
+        if (keyboard.IsKeyDown(Keys.Right) || keyboard.IsKeyDown(Keys.NumPad6))
+        {
+            moveX += 1f;
+        }
+
+        if (keyboard.IsKeyDown(Keys.Up) || keyboard.IsKeyDown(Keys.NumPad8))
+        {
+            moveZ -= 1f;
+        }
+
+        if (keyboard.IsKeyDown(Keys.Down) || keyboard.IsKeyDown(Keys.NumPad2))
+        {
+            moveZ += 1f;
+        }
+
+        var moveLength = MathF.Sqrt((moveX * moveX) + (moveZ * moveZ));
+        if (moveLength > 1f)
+        {
+            moveX /= moveLength;
+            moveZ /= moveLength;
+        }
+
+        if (moveLength > 0f)
+        {
+            _playerYawRadians = MathF.Atan2(moveZ, moveX);
+        }
+
+        _client.Runtime.SetMovementIntent(moveX, moveZ, _playerYawRadians);
     }
 
     protected override void Draw(GameTime gameTime)
@@ -180,53 +222,20 @@ public sealed class GrimGame : Game
 
     private void HandleCameraInput(SnapshotView snapshotView, float deltaSeconds)
     {
+        var desiredTarget = GetCameraCenter(snapshotView) + new Vector3(0f, 1.2f, 0f);
         if (!_cameraInitialized)
         {
-            _cameraTarget = GetCameraCenter(snapshotView);
+            _cameraTarget = desiredTarget;
             _cameraInitialized = true;
         }
+        else
+        {
+            var followLerp = MathF.Min(1f, deltaSeconds * 10f);
+            _cameraTarget = Vector3.Lerp(_cameraTarget, desiredTarget, followLerp);
+        }
 
-        var keyboard = Keyboard.GetState();
         var mouse = Mouse.GetState();
-
-        var forward = new Vector3(MathF.Cos(_cameraYaw), 0f, MathF.Sin(_cameraYaw));
-        if (forward.LengthSquared() > 0)
-        {
-            forward.Normalize();
-        }
-
-        var right = new Vector3(forward.Z, 0f, -forward.X);
-        var panSpeed = 12f * deltaSeconds * (_cameraDistance / 20f);
-
-        if (keyboard.IsKeyDown(Keys.W))
-        {
-            _cameraTarget += forward * panSpeed;
-        }
-
-        if (keyboard.IsKeyDown(Keys.S))
-        {
-            _cameraTarget -= forward * panSpeed;
-        }
-
-        if (keyboard.IsKeyDown(Keys.A))
-        {
-            _cameraTarget -= right * panSpeed;
-        }
-
-        if (keyboard.IsKeyDown(Keys.D))
-        {
-            _cameraTarget += right * panSpeed;
-        }
-
-        if (keyboard.IsKeyDown(Keys.Q))
-        {
-            _cameraTarget += Vector3.Up * panSpeed;
-        }
-
-        if (keyboard.IsKeyDown(Keys.E))
-        {
-            _cameraTarget -= Vector3.Up * panSpeed;
-        }
+        var keyboard = Keyboard.GetState();
 
         if (mouse.RightButton == ButtonState.Pressed && _previousMouseState.RightButton == ButtonState.Pressed)
         {
@@ -246,7 +255,7 @@ public sealed class GrimGame : Game
 
         if (keyboard.IsKeyDown(Keys.Space))
         {
-            _cameraTarget = GetCameraCenter(snapshotView);
+            _cameraYaw = _playerYawRadians + MathF.PI;
         }
 
         _previousMouseState = mouse;
@@ -453,7 +462,7 @@ public sealed class GrimGame : Game
     {
         var hudX = 14;
         var hudY = 14;
-        var hudWidth = 360;
+        var hudWidth = 500;
         var hudHeight = 100;
 
         var panel = new Color(10, 14, 22, 220);
@@ -475,7 +484,7 @@ public sealed class GrimGame : Game
         DrawText(spriteBatch, pixel, $"CLIENT: {clientTag}".ToUpperInvariant(), hudX + 10, hudY + 10, 2, new Color(190, 223, 255));
         DrawText(spriteBatch, pixel, $"TICK: {snapshotView.Tick}", hudX + 10, hudY + 30, 2, Color.White);
         DrawText(spriteBatch, pixel, $"ENTS: {snapshotView.Entities.Count}", hudX + 10, hudY + 50, 2, Color.White);
-        DrawText(spriteBatch, pixel, "WASD PAN  RMB ORBIT  WHEEL ZOOM  SPACE RESET", hudX + 10, hudY + 70, 1, new Color(168, 190, 220));
+        DrawText(spriteBatch, pixel, "ARROWS MOVE  RMB ORBIT  WHEEL ZOOM  SPACE SNAP BEHIND", hudX + 10, hudY + 70, 1, new Color(168, 190, 220));
         DrawText(spriteBatch, pixel, $"NET: {statusWord}", hudX + 245, hudY + 50, 2, StatusColor(statusWord));
     }
 

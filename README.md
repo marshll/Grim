@@ -41,6 +41,10 @@ MMO-first C# game foundation with a MonoGame client host, a headless server skel
 
 	dotnet run --project src/Grim.Core/Grim.Core.csproj -- --client alpha --account account_alpha --host 127.0.0.1 --port 7777
 
+- Start client in editor mode:
+
+	dotnet run --project src/Grim.Core/Grim.Core.csproj -- --editor
+
 - Start two clients against one server (use separate terminals):
 
 	dotnet run --project src/Grim.Core/Grim.Core.csproj -- --client alpha --account account_alpha
@@ -63,6 +67,17 @@ Client 3D debug controls:
 - `Right Mouse Drag`: orbit camera
 - `Mouse Wheel`: zoom in/out
 - `Space`: snap camera behind player movement direction
+
+Editor controls (current foundation):
+
+- Start with `--editor`
+- `F1`: toggle editor mode on/off
+- `Tab`: select next static zone object
+- `I/J/K/L`: move selected static object on X/Z plane
+- `U/O`: move selected static object on Y axis
+- `Z/X`: rotate selected static object (yaw)
+- `Shift`: faster move speed while transforming
+- `F5`: save current editor overrides to `content/zones/start_zone.json`
 
 ## Current Scope
 

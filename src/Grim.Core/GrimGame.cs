@@ -129,10 +129,12 @@ public sealed class GrimGame : Game
 
     protected override void Update(GameTime gameTime)
     {
-        var snapshotView = _client.Runtime.GetSnapshotView();
+        var deltaSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;
         HandlePlayerInput();
+        _client.Runtime.AdvanceFrame(deltaSeconds);
+        var snapshotView = _client.Runtime.GetSnapshotView();
         _client.Update(gameTime.ElapsedGameTime);
-        HandleCameraInput(snapshotView, (float)gameTime.ElapsedGameTime.TotalSeconds);
+        HandleCameraInput(snapshotView, deltaSeconds);
 
         _windowTitleRefreshTimer += gameTime.ElapsedGameTime.TotalMilliseconds;
         if (_windowTitleRefreshTimer >= 250)

@@ -147,37 +147,49 @@ public sealed class GrimGame : Game
     private void HandlePlayerInput()
     {
         var keyboard = Keyboard.GetState();
-        var moveX = 0f;
-        var moveZ = 0f;
+        var localMoveX = 0f;
+        var localMoveZ = 0f;
 
         if (keyboard.IsKeyDown(Keys.Left) || keyboard.IsKeyDown(Keys.NumPad4))
         {
-            moveX -= 1f;
+            localMoveX -= 1f;
         }
 
         if (keyboard.IsKeyDown(Keys.Right) || keyboard.IsKeyDown(Keys.NumPad6))
         {
-            moveX += 1f;
+            localMoveX += 1f;
         }
 
         if (keyboard.IsKeyDown(Keys.Up) || keyboard.IsKeyDown(Keys.NumPad8))
         {
-            moveZ -= 1f;
+            localMoveZ -= 1f;
         }
 
         if (keyboard.IsKeyDown(Keys.Down) || keyboard.IsKeyDown(Keys.NumPad2))
         {
-            moveZ += 1f;
+            localMoveZ += 1f;
         }
 
-        var moveLength = MathF.Sqrt((moveX * moveX) + (moveZ * moveZ));
+        var moveLength = MathF.Sqrt((localMoveX * localMoveX) + (localMoveZ * localMoveZ));
         if (moveLength > 1f)
         {
-            moveX /= moveLength;
-            moveZ /= moveLength;
+            localMoveX /= moveLength;
+            localMoveZ /= moveLength;
         }
 
-        if (moveLength > 0f)
+        var sin = MathF.Sin(_cameraYaw);
+        var cos = MathF.Cos(_cameraYaw);
+        var moveX = (localMoveX * cos) - (localMoveZ * sin);
+        var moveZ = (localMoveX * sin) + (localMoveZ * cos);
+
+        var worldLength = MathF.Sqrt((moveX * moveX) + (moveZ * moveZ));
+        if (worldLength > 1f)
+        {
+            moveX /= worldLength;
+            moveZ /= worldLength;
+        }
+
+        if (worldLength > 0f)
         {
             _playerYawRadians = MathF.Atan2(moveZ, moveX);
         }
@@ -334,9 +346,16 @@ public sealed class GrimGame : Game
         foreach (var entity in snapshotView.Entities)
         {
             var isLocal = snapshotView.LocalSessionId.HasValue && entity.OwnerSessionId == snapshotView.LocalSessionId.Value;
-            var baseColor = isLocal ? new Color(255, 210, 96) : ColorFromEntity(entity.Id.Value);
-            var world = Matrix.CreateScale(isLocal ? 0.9f : 0.7f, isLocal ? 1.8f : 1.4f, isLocal ? 0.9f : 0.7f) *
-                        Matrix.CreateTranslation(entity.Position.X, entity.Position.Y + (isLocal ? 0.9f : 0.7f), entity.Position.Z);
+            var isStatic = entity.OwnerSessionId == Guid.Empty;
+            var baseColor = isLocal
+                ? new Color(255, 210, 96)
+                : isStatic
+                    ? new Color(120, 165, 208)
+                    : ColorFromEntity(entity.Id.Value);
+            var scale = isLocal ? new Vector3(0.9f, 1.8f, 0.9f) : isStatic ? new Vector3(1.8f, 2.4f, 1.8f) : new Vector3(0.7f, 1.4f, 0.7f);
+            var world = Matrix.CreateScale(scale) *
+                        Matrix.CreateRotationY(entity.YawRadians) *
+                        Matrix.CreateTranslation(entity.Position.X, entity.Position.Y + (scale.Y * 0.5f), entity.Position.Z);
 
             var cubeVertices = BuildCubeVertices(baseColor);
             effect.World = world;
@@ -421,6 +440,11 @@ public sealed class GrimGame : Game
     {
         foreach (var entity in snapshotView.Entities)
         {
+            if (entity.OwnerSessionId == Guid.Empty)
+            {
+                continue;
+            }
+
             var worldPosition = new Vector3(entity.Position.X, entity.Position.Y + 2.1f, entity.Position.Z);
             var projected = GraphicsDevice.Viewport.Project(worldPosition, projection, view, Matrix.Identity);
             if (projected.Z is < 0f or > 1f)

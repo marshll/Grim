@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Text.Json;
 using Grim.Shared;
 
 namespace Grim.Server;
@@ -9,10 +10,18 @@ public sealed class ServerHost
     private readonly TcpListener _listener;
     private readonly WorldLoop _world = new();
     private readonly SessionRegistry _sessions = new();
+    private readonly Vector3Snapshot _spawnPoint;
 
     public ServerHost(int port)
     {
         _listener = new TcpListener(IPAddress.Any, port);
+        var zone = LoadStartZone();
+        _spawnPoint = zone.SpawnPoint;
+
+        foreach (var staticObject in zone.StaticObjects)
+        {
+            _sessions.RegisterStaticEntity(staticObject.Position, staticObject.YawRadians);
+        }
     }
 
     public async Task RunAsync(CancellationToken cancellationToken)
@@ -85,7 +94,7 @@ public sealed class ServerHost
         }
 
         var loginRequest = NetworkCodec.DeserializePayload<LoginRequest>(loginFrame);
-        var session = _sessions.Register(loginRequest.AccountName);
+        var session = _sessions.Register(loginRequest.AccountName, _spawnPoint);
         var loginResponse = new LoginResponse(true, "ok", session.SessionId);
 
         await NetworkCodec.WriteMessageAsync(
@@ -175,5 +184,73 @@ public sealed class ServerHost
 
             await Task.Delay(interval, cancellationToken);
         }
+    }
+
+    private static ZoneLoadResult LoadStartZone()
+    {
+        var zonePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "content", "zones", "start_zone.json"));
+        if (!File.Exists(zonePath))
+        {
+            Console.WriteLine($"Zone file not found at {zonePath}; using fallback spawn and no static entities.");
+            return new ZoneLoadResult(new Vector3Snapshot(0, 0, 0), []);
+        }
+
+        try
+        {
+            var json = File.ReadAllText(zonePath);
+            var definition = JsonSerializer.Deserialize<ZoneDefinition>(json);
+            if (definition is null)
+            {
+                Console.WriteLine($"Zone file {zonePath} did not deserialize; using fallback spawn and no static entities.");
+                return new ZoneLoadResult(new Vector3Snapshot(0, 0, 0), []);
+            }
+
+            var spawn = definition.SpawnPoints is { Count: > 0 }
+                ? new Vector3Snapshot(definition.SpawnPoints[0].X, definition.SpawnPoints[0].Y, definition.SpawnPoints[0].Z)
+                : new Vector3Snapshot(0, 0, 0);
+
+            var staticObjects = new List<ZoneStaticObject>(definition.StaticObjects?.Count ?? 0);
+            if (definition.StaticObjects is not null)
+            {
+                foreach (var item in definition.StaticObjects)
+                {
+                    staticObjects.Add(new ZoneStaticObject(new Vector3Snapshot(item.X, item.Y, item.Z), item.YawRadians));
+                }
+            }
+
+            Console.WriteLine($"Loaded zone {definition.Id} with {staticObjects.Count} static objects.");
+            return new ZoneLoadResult(spawn, staticObjects);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to load zone definition: {ex.Message}. Using fallback spawn and no static entities.");
+            return new ZoneLoadResult(new Vector3Snapshot(0, 0, 0), []);
+        }
+    }
+
+    private sealed record ZoneLoadResult(Vector3Snapshot SpawnPoint, IReadOnlyList<ZoneStaticObject> StaticObjects);
+
+    private sealed record ZoneStaticObject(Vector3Snapshot Position, float YawRadians);
+
+    private sealed class ZoneDefinition
+    {
+        public string Id { get; init; } = "start_zone";
+        public List<ZonePoint> SpawnPoints { get; init; } = [];
+        public List<ZoneStaticObjectDefinition>? StaticObjects { get; init; }
+    }
+
+    private sealed class ZonePoint
+    {
+        public float X { get; init; }
+        public float Y { get; init; }
+        public float Z { get; init; }
+    }
+
+    private sealed class ZoneStaticObjectDefinition
+    {
+        public float X { get; init; }
+        public float Y { get; init; }
+        public float Z { get; init; }
+        public float YawRadians { get; init; }
     }
 }

@@ -72,12 +72,52 @@ Editor controls (current foundation):
 
 - Start with `--editor`
 - `F1`: toggle editor mode on/off
-- `Tab`: select next static zone object
-- `I/J/K/L`: move selected static object on X/Z plane
-- `U/O`: move selected static object on Y axis
-- `Z/X`: rotate selected static object (yaw)
+- `Tab`: select next object
+- `LMB` on gizmo axis: drag selected object on X/Y/Z axis
+- `I/J/K/L`: move selected object on X/Z plane
+- `U/O`: move selected object on Y axis
+- `Z/X`: rotate selected object (yaw)
+- `C/V`: decrease/increase selected object scale
 - `Shift`: faster move speed while transforming
+- `Ctrl+Z`: undo last editor command
+- `Ctrl+Y` or `Ctrl+Shift+Z`: redo editor command
 - `F5`: save current editor overrides to `content/zones/start_zone.json`
+
+FBX import pipeline (FBX -> glTF):
+
+- Recommended structure:
+
+	content/models/_imports/<asset_name>/<asset_name>.fbx      (source)
+	content/models/<asset_name>/<asset_name>.gltf              (runtime target)
+
+- Add import jobs to `content/models/import-manifest.json`:
+
+	{
+	  "imports": [
+	    {
+	      "id": "pillar_v1",
+	      "sourceFbx": "content/models/_imports/pillar_v1/pillar_v1.fbx",
+	      "targetDir": "pillar_v1",
+	      "outputFile": "pillar_v1.gltf",
+	      "scale": 1.0
+	    }
+	  ]
+	}
+
+- Import all jobs and update registry automatically:
+
+	./tools/import-models.sh
+
+- Import one model by ID:
+
+	./tools/import-models.sh --id pillar_v1
+
+- Legacy direct conversion is still available:
+
+	./tools/convert-fbx-to-gltf.sh content/models/my_mesh/my_mesh.fbx content/models/my_mesh/my_mesh.gltf
+
+- Place the `modelId` on static objects in `content/zones/start_zone.json`.
+- Run `./tools/validate-content.sh` to verify JSON contracts and stale/missing FBX conversions.
 
 ## Current Scope
 

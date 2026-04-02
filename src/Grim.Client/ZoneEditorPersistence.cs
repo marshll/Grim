@@ -18,6 +18,14 @@ public sealed class ZoneEditorPersistence
 
     public SaveZoneResult SaveStaticObjectOverrides(IReadOnlyList<ZoneStaticObjectOverride> overrides)
     {
+        return SaveStaticObjectEdits(overrides, [], []);
+    }
+
+    public SaveZoneResult SaveStaticObjectEdits(
+        IReadOnlyList<ZoneStaticObjectOverride> overrides,
+        IReadOnlyList<ZoneStaticObjectDraft> createdObjects,
+        IReadOnlyCollection<int> deletedStaticIndices)
+    {
         if (!File.Exists(ZonePath))
         {
             return SaveZoneResult.Failed($"Zone file not found: {ZonePath}");
@@ -44,7 +52,7 @@ public sealed class ZoneEditorPersistence
             zone = zone with { StaticObjects = [] };
         }
 
-        var applied = 0;
+        var appliedUpdates = 0;
         foreach (var item in overrides)
         {
             if (item.ZoneStaticIndex < 0 || item.ZoneStaticIndex >= zone.StaticObjects.Count)
@@ -58,11 +66,43 @@ public sealed class ZoneEditorPersistence
                 X = item.Position.X,
                 Y = item.Position.Y,
                 Z = item.Position.Z,
-                YawRadians = item.YawRadians
+                YawRadians = item.YawRadians,
+                Scale = item.Scale,
+                ModelId = item.HasModelOverride ? item.ModelId : current.ModelId
             };
-            applied++;
+            appliedUpdates++;
         }
 
+        var appliedDeletes = 0;
+        if (deletedStaticIndices.Count > 0)
+        {
+            var validIndices = deletedStaticIndices
+                .Where(index => index >= 0 && index < zone.StaticObjects.Count)
+                .Distinct()
+                .OrderByDescending(index => index)
+                .ToArray();
+
+            foreach (var index in validIndices)
+            {
+                zone.StaticObjects.RemoveAt(index);
+                appliedDeletes++;
+            }
+        }
+
+        var appliedCreates = 0;
+        foreach (var draft in createdObjects)
+        {
+            zone.StaticObjects.Add(new ZoneStaticObject(
+                draft.Position.X,
+                draft.Position.Y,
+                draft.Position.Z,
+                draft.YawRadians,
+                draft.ModelId,
+                draft.Scale));
+            appliedCreates++;
+        }
+
+        var applied = appliedUpdates + appliedDeletes + appliedCreates;
         if (applied == 0)
         {
             return SaveZoneResult.Failed("No matching static objects to save.");
@@ -113,9 +153,17 @@ public sealed class ZoneEditorPersistence
     }
 }
 
-public readonly record struct ZoneStaticObjectOverride(int ZoneStaticIndex, ZonePosition Position, float YawRadians);
+public readonly record struct ZoneStaticObjectOverride(
+    int ZoneStaticIndex,
+    ZonePosition Position,
+    float YawRadians,
+    float Scale = 1f,
+    string? ModelId = null,
+    bool HasModelOverride = false);
 
 public readonly record struct ZonePosition(float X, float Y, float Z);
+
+public readonly record struct ZoneStaticObjectDraft(ZonePosition Position, float YawRadians, float Scale = 1f, string? ModelId = null);
 
 public sealed record SaveZoneResult(bool Success, string Message, int AppliedCount, string ZonePath)
 {
@@ -140,4 +188,4 @@ public sealed record ZoneDefinition(
 
 public sealed record ZoneSpawnPoint(float X, float Y, float Z);
 
-public sealed record ZoneStaticObject(float X, float Y, float Z, float YawRadians, string? ModelId = null);
+public sealed record ZoneStaticObject(float X, float Y, float Z, float YawRadians, string? ModelId = null, float Scale = 1f);

@@ -17,11 +17,18 @@ public sealed class GrimGame : Game
     private bool _editorModeActive;
     private Guid? _selectedEntityId;
     private readonly Dictionary<Guid, EditorTransformOverride> _editorOverrides = new();
+    private readonly Stack<EditorTransformCommand> _undoCommands = new();
+    private readonly Stack<EditorTransformCommand> _redoCommands = new();
+    private readonly List<EditorCreatedStaticObject> _editorCreatedObjects = new();
+    private readonly HashSet<int> _editorDeletedStaticIndices = new();
     private string _editorStatusMessage = "Editor bereit";
     private bool _isDraggingGizmo;
+    private GizmoAxis _activeGizmoAxis = GizmoAxis.None;
     private Guid? _draggedEntityId;
     private float _dragPlaneY;
     private Vector3 _dragOffset;
+    private Vector2 _gizmoDragStartMouse;
+    private EditorTransformOverride _gizmoDragStartOverride;
 
     private SpriteBatch? _spriteBatch;
     private Texture2D? _pixel;
@@ -274,6 +281,7 @@ public sealed class GrimGame : Game
             {
                 _selectedEntityId = null;
                 _isDraggingGizmo = false;
+                _activeGizmoAxis = GizmoAxis.None;
                 _draggedEntityId = null;
             }
         }
@@ -303,6 +311,7 @@ public sealed class GrimGame : Game
         {
             _selectedEntityId = null;
             _isDraggingGizmo = false;
+            _activeGizmoAxis = GizmoAxis.None;
             _draggedEntityId = null;
         }
 
@@ -316,7 +325,29 @@ public sealed class GrimGame : Game
         {
             _selectedEntityId = null;
             _isDraggingGizmo = false;
+            _activeGizmoAxis = GizmoAxis.None;
             _draggedEntityId = null;
+            return;
+        }
+
+        var controlDown = keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
+        var shiftDown = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
+        if (controlDown && IsNewKeyPress(Keys.Z, keyboard))
+        {
+            if (shiftDown)
+            {
+                RedoLastEditorCommand();
+            }
+            else
+            {
+                UndoLastEditorCommand();
+            }
+            return;
+        }
+
+        if (controlDown && IsNewKeyPress(Keys.Y, keyboard))
+        {
+            RedoLastEditorCommand();
             return;
         }
 
@@ -340,12 +371,22 @@ public sealed class GrimGame : Game
             _editorStatusMessage = "Objekt per TAB ausgewaehlt";
         }
 
+        if (IsNewKeyPress(Keys.Insert, keyboard))
+        {
+            var selectedForCreate = GetSelectedEntity(snapshotView);
+            if (selectedForCreate is not null)
+            {
+                CreateStaticObjectFromSelected(selectedForCreate);
+                return;
+            }
+        }
+
         if (!toggleButtonClicked && IsLeftClick(mouse) && !GetEditorToggleButtonRect().Contains(mouse.X, mouse.Y))
         {
             var selectedEntity = GetSelectedEntity(snapshotView);
-            if (selectedEntity is not null && IsMouseOverGizmo(selectedEntity, mouse))
+            if (selectedEntity is not null && TryPickGizmoAxis(selectedEntity, mouse, out var axis))
             {
-                StartGizmoDrag(selectedEntity, mouse);
+                StartGizmoDrag(selectedEntity, mouse, axis);
             }
             else
             {
@@ -362,7 +403,9 @@ public sealed class GrimGame : Game
         {
             if (mouse.LeftButton != ButtonState.Pressed)
             {
+                CommitGizmoDragCommand(snapshotView);
                 _isDraggingGizmo = false;
+                _activeGizmoAxis = GizmoAxis.None;
                 _draggedEntityId = null;
             }
             else
@@ -378,11 +421,14 @@ public sealed class GrimGame : Game
             selected = entities[0];
         }
 
-        var moveSpeed = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift) ? 8f : 3.5f;
+        var moveSpeed = shiftDown ? 8f : 3.5f;
         var rotateSpeed = 1.8f;
+        var scaleSpeed = 1.1f;
 
-        var position = GetRenderPosition(selected);
-        var yaw = GetRenderYaw(selected);
+        var editorOverride = GetOrCreateEditorOverride(selected);
+        var position = editorOverride.Position;
+        var yaw = editorOverride.YawRadians;
+        var scale = editorOverride.Scale;
 
         if (keyboard.IsKeyDown(Keys.J))
         {
@@ -424,10 +470,30 @@ public sealed class GrimGame : Game
             yaw += rotateSpeed * deltaSeconds;
         }
 
-        if (IsNewKeyPress(Keys.Back, keyboard) || IsNewKeyPress(Keys.Delete, keyboard))
+        if (keyboard.IsKeyDown(Keys.C))
         {
-            _editorOverrides.Remove(selected.Id.Value);
-            _editorStatusMessage = "Lokaler Override entfernt";
+            scale = MathF.Max(0.1f, scale - (scaleSpeed * deltaSeconds));
+        }
+
+        if (keyboard.IsKeyDown(Keys.V))
+        {
+            scale = MathF.Min(10f, scale + (scaleSpeed * deltaSeconds));
+        }
+
+        if (IsNewKeyPress(Keys.Delete, keyboard))
+        {
+            ToggleDeleteSelectedStaticObject(selected);
+            return;
+        }
+
+        if (IsNewKeyPress(Keys.Back, keyboard))
+        {
+            if (_editorOverrides.TryGetValue(selected.Id.Value, out var before))
+            {
+                _editorOverrides.Remove(selected.Id.Value);
+                PushEditorCommand(new EditorTransformCommand(selected.Id.Value, before, null, "Override entfernt"));
+                _editorStatusMessage = "Lokaler Override entfernt";
+            }
             return;
         }
 
@@ -437,7 +503,12 @@ public sealed class GrimGame : Game
             return;
         }
 
-        _editorOverrides[selected.Id.Value] = new EditorTransformOverride(position, yaw);
+        _editorOverrides[selected.Id.Value] = editorOverride with
+        {
+            Position = position,
+            YawRadians = yaw,
+            Scale = scale
+        };
         _editorStatusMessage = _isDraggingGizmo ? "Gizmo-Drag aktiv" : "Lokale Aenderung aktiv (F5 zum Speichern)";
     }
 
@@ -456,14 +527,39 @@ public sealed class GrimGame : Game
                 continue;
             }
 
+            if (_editorDeletedStaticIndices.Contains(entity.ZoneStaticIndex.Value))
+            {
+                continue;
+            }
+
             updates.Add(new ZoneStaticObjectOverride(
                 entity.ZoneStaticIndex.Value,
                 new ZonePosition(value.Position.X, value.Position.Y, value.Position.Z),
-                value.YawRadians));
+                value.YawRadians,
+                value.Scale,
+                value.ModelIdOverride,
+                value.HasModelOverride));
         }
 
-        var result = _zoneEditorPersistence.SaveStaticObjectOverrides(updates);
-        _editorStatusMessage = result.Success ? $"Gespeichert: {result.AppliedCount} Objekt(e)" : $"Save fehlgeschlagen: {result.Message}";
+        var drafts = _editorCreatedObjects
+            .Select(item => new ZoneStaticObjectDraft(
+                new ZonePosition(item.Position.X, item.Position.Y, item.Position.Z),
+                item.YawRadians,
+                item.Scale,
+                item.ModelId))
+            .ToArray();
+
+        var result = _zoneEditorPersistence.SaveStaticObjectEdits(updates, drafts, _editorDeletedStaticIndices);
+        if (result.Success)
+        {
+            _editorCreatedObjects.Clear();
+            _editorDeletedStaticIndices.Clear();
+            _editorStatusMessage = $"Gespeichert: {result.AppliedCount} Aenderung(en)";
+        }
+        else
+        {
+            _editorStatusMessage = $"Save fehlgeschlagen: {result.Message}";
+        }
     }
 
     private bool IsNewKeyPress(Keys key, KeyboardState keyboard)
@@ -619,49 +715,62 @@ public sealed class GrimGame : Game
         {
             var isLocal = snapshotView.LocalSessionId.HasValue && entity.OwnerSessionId == snapshotView.LocalSessionId.Value;
             var isStatic = entity.OwnerSessionId == Guid.Empty;
+
+            if (isStatic && entity.ZoneStaticIndex.HasValue && _editorDeletedStaticIndices.Contains(entity.ZoneStaticIndex.Value))
+            {
+                continue;
+            }
+
             var position = GetRenderPosition(entity);
             var yaw = GetRenderYaw(entity);
+            var scaleMultiplier = GetRenderScale(entity);
+            var modelId = GetRenderModelId(entity);
 
-            if (isStatic && !string.IsNullOrWhiteSpace(entity.ModelId))
+            var renderedAsModel = false;
+
+            if (isStatic && !string.IsNullOrWhiteSpace(modelId))
             {
-                if (TryDrawRegisteredModel(effect, entity, view, projection, position, yaw))
+                if (TryDrawRegisteredModel(effect, modelId, view, projection, position, yaw, scaleMultiplier))
                 {
-                    continue;
+                    renderedAsModel = true;
                 }
 
-                if (string.Equals(entity.ModelId, "obelisk_v1", StringComparison.Ordinal))
+                if (!renderedAsModel && string.Equals(modelId, "obelisk_v1", StringComparison.Ordinal))
                 {
-                    DrawObelisk3D(effect, entity, view, projection, position, yaw);
-                    continue;
+                    DrawObelisk3D(effect, view, projection, position, yaw, scaleMultiplier);
+                    renderedAsModel = true;
                 }
             }
 
-            var baseColor = isLocal
-                ? new Color(255, 210, 96)
-                : isStatic
-                    ? new Color(120, 165, 208)
-                    : ColorFromEntity(entity.Id.Value);
-            var scale = isLocal ? new Vector3(0.9f, 1.8f, 0.9f) : isStatic ? new Vector3(1.8f, 2.4f, 1.8f) : new Vector3(0.7f, 1.4f, 0.7f);
-            var world = Matrix.CreateScale(scale) *
-                        Matrix.CreateRotationY(yaw) *
-                        Matrix.CreateTranslation(position.X, position.Y + (scale.Y * 0.5f), position.Z);
-
-            var cubeVertices = BuildCubeVertices(baseColor);
-            effect.World = world;
-            effect.View = view;
-            effect.Projection = projection;
-
-            foreach (var pass in effect.CurrentTechnique.Passes)
+            if (!renderedAsModel)
             {
-                pass.Apply();
-                GraphicsDevice.DrawUserIndexedPrimitives(
-                    PrimitiveType.TriangleList,
-                    cubeVertices,
-                    0,
-                    cubeVertices.Length,
-                    UnitCubeIndices,
-                    0,
-                    UnitCubeIndices.Length / 3);
+                var baseColor = isLocal
+                    ? new Color(255, 210, 96)
+                    : isStatic
+                        ? new Color(120, 165, 208)
+                        : ColorFromEntity(entity.Id.Value);
+                var scale = (isLocal ? new Vector3(0.9f, 1.8f, 0.9f) : isStatic ? new Vector3(1.8f, 2.4f, 1.8f) : new Vector3(0.7f, 1.4f, 0.7f)) * scaleMultiplier;
+                var world = Matrix.CreateScale(scale) *
+                            Matrix.CreateRotationY(yaw) *
+                            Matrix.CreateTranslation(position.X, position.Y + (scale.Y * 0.5f), position.Z);
+
+                var cubeVertices = BuildCubeVertices(baseColor);
+                effect.World = world;
+                effect.View = view;
+                effect.Projection = projection;
+
+                foreach (var pass in effect.CurrentTechnique.Passes)
+                {
+                    pass.Apply();
+                    GraphicsDevice.DrawUserIndexedPrimitives(
+                        PrimitiveType.TriangleList,
+                        cubeVertices,
+                        0,
+                        cubeVertices.Length,
+                        UnitCubeIndices,
+                        0,
+                        UnitCubeIndices.Length / 3);
+                }
             }
 
             if (isLocal)
@@ -675,15 +784,56 @@ public sealed class GrimGame : Game
                 DrawEditorGizmo(effect, position, view, projection);
             }
         }
+
+        DrawCreatedStaticObjects(effect, view, projection);
     }
 
-    private void DrawObelisk3D(BasicEffect effect, EntitySnapshot entity, Matrix view, Matrix projection, Vector3 position, float yaw)
+    private void DrawCreatedStaticObjects(BasicEffect effect, Matrix view, Matrix projection)
+    {
+        foreach (var created in _editorCreatedObjects)
+        {
+            var drawn = false;
+            if (!string.IsNullOrWhiteSpace(created.ModelId))
+            {
+                drawn = TryDrawRegisteredModel(effect, created.ModelId, view, projection, created.Position, created.YawRadians, created.Scale);
+            }
+
+            if (!drawn)
+            {
+                var world = Matrix.CreateScale(new Vector3(1.8f, 2.4f, 1.8f) * created.Scale) *
+                            Matrix.CreateRotationY(created.YawRadians) *
+                            Matrix.CreateTranslation(created.Position.X, created.Position.Y + (1.2f * created.Scale), created.Position.Z);
+
+                var vertices = BuildCubeVertices(new Color(132, 222, 164));
+                effect.World = world;
+                effect.View = view;
+                effect.Projection = projection;
+
+                foreach (var pass in effect.CurrentTechnique.Passes)
+                {
+                    pass.Apply();
+                    GraphicsDevice.DrawUserIndexedPrimitives(
+                        PrimitiveType.TriangleList,
+                        vertices,
+                        0,
+                        vertices.Length,
+                        UnitCubeIndices,
+                        0,
+                        UnitCubeIndices.Length / 3);
+                }
+            }
+
+            DrawEditorSelectionRing(effect, created.Position, view, projection);
+        }
+    }
+
+    private void DrawObelisk3D(BasicEffect effect, Matrix view, Matrix projection, Vector3 position, float yaw, float scaleMultiplier)
     {
         effect.TextureEnabled = false;
         effect.VertexColorEnabled = true;
 
         var baseColor = new Color(186, 214, 238);
-        var world = Matrix.CreateScale(1.25f) *
+        var world = Matrix.CreateScale(1.25f * scaleMultiplier) *
                     Matrix.CreateRotationY(yaw) *
                     Matrix.CreateTranslation(position.X, position.Y, position.Z);
 
@@ -707,19 +857,19 @@ public sealed class GrimGame : Game
         }
     }
 
-    private bool TryDrawRegisteredModel(BasicEffect effect, EntitySnapshot entity, Matrix view, Matrix projection, Vector3 position, float yaw)
+    private bool TryDrawRegisteredModel(BasicEffect effect, string modelId, Matrix view, Matrix projection, Vector3 position, float yaw, float scaleMultiplier)
     {
-        if (_modelRegistry is null || string.IsNullOrWhiteSpace(entity.ModelId))
+        if (_modelRegistry is null || string.IsNullOrWhiteSpace(modelId))
         {
             return false;
         }
 
-        if (!_modelRegistry.TryGetModel(entity.ModelId, GraphicsDevice, out var modelAsset))
+        if (!_modelRegistry.TryGetModel(modelId, GraphicsDevice, out var modelAsset))
         {
             return false;
         }
 
-        var world = Matrix.CreateScale(modelAsset.Scale) *
+        var world = Matrix.CreateScale(modelAsset.Scale * scaleMultiplier) *
                     Matrix.CreateRotationY(yaw) *
                     Matrix.CreateTranslation(position.X, position.Y, position.Z);
 
@@ -813,14 +963,17 @@ public sealed class GrimGame : Game
     private void DrawEditorGizmo(BasicEffect effect, Vector3 position, Matrix view, Matrix projection)
     {
         const float axisLength = 2.2f;
+        var xColor = _activeGizmoAxis == GizmoAxis.X ? new Color(255, 236, 120) : new Color(255, 96, 96);
+        var yColor = _activeGizmoAxis == GizmoAxis.Y ? new Color(255, 236, 120) : new Color(96, 255, 120);
+        var zColor = _activeGizmoAxis == GizmoAxis.Z ? new Color(255, 236, 120) : new Color(96, 170, 255);
         var vertices = new[]
         {
-            new VertexPositionColor(position, new Color(255, 96, 96)),
-            new VertexPositionColor(position + new Vector3(axisLength, 0f, 0f), new Color(255, 96, 96)),
-            new VertexPositionColor(position, new Color(96, 255, 120)),
-            new VertexPositionColor(position + new Vector3(0f, axisLength, 0f), new Color(96, 255, 120)),
-            new VertexPositionColor(position, new Color(96, 170, 255)),
-            new VertexPositionColor(position + new Vector3(0f, 0f, axisLength), new Color(96, 170, 255))
+            new VertexPositionColor(position, xColor),
+            new VertexPositionColor(position + new Vector3(axisLength, 0f, 0f), xColor),
+            new VertexPositionColor(position, yColor),
+            new VertexPositionColor(position + new Vector3(0f, axisLength, 0f), yColor),
+            new VertexPositionColor(position, zColor),
+            new VertexPositionColor(position + new Vector3(0f, 0f, axisLength), zColor)
         };
 
         effect.World = Matrix.Identity;
@@ -842,6 +995,26 @@ public sealed class GrimGame : Game
         }
 
         return new Vector3(entity.Position.X, entity.Position.Y, entity.Position.Z);
+    }
+
+    private float GetRenderScale(EntitySnapshot entity)
+    {
+        if (_editorOverrides.TryGetValue(entity.Id.Value, out var value))
+        {
+            return value.Scale;
+        }
+
+        return 1f;
+    }
+
+    private string? GetRenderModelId(EntitySnapshot entity)
+    {
+        if (_editorOverrides.TryGetValue(entity.Id.Value, out var value) && value.HasModelOverride)
+        {
+            return value.ModelIdOverride;
+        }
+
+        return entity.ModelId;
     }
 
     private float GetRenderYaw(EntitySnapshot entity)
@@ -981,7 +1154,7 @@ public sealed class GrimGame : Game
 
         var modeText = _editorModeActive ? "EDITOR MODE: ON" : "EDITOR MODE: OFF";
         DrawText(spriteBatch, pixel, modeText, panelX + 10, panelY + 10, 2, Color.White);
-        DrawText(spriteBatch, pixel, "F1 TOGGLE  LMB SELECT/DRAG  TAB NEXT  IJKL/UO MOVE  Z/X YAW  F5 SAVE", panelX + 10, panelY + 36, 1, new Color(184, 212, 232));
+        DrawText(spriteBatch, pixel, "F1 TOGGLE  INS DUPLICATE  DEL TOGGLE DELETE  LMB AXIS DRAG  C/V SCALE  CTRL+Z/Y", panelX + 10, panelY + 36, 1, new Color(184, 212, 232));
 
         var buttonRect = GetEditorToggleButtonRect();
         var buttonColor = _editorModeActive ? new Color(58, 170, 122) : new Color(148, 110, 68);
@@ -998,12 +1171,48 @@ public sealed class GrimGame : Game
             if (selected is not null)
             {
                 var pos = GetRenderPosition(selected);
-                selectedText = $"SELECTED: {selected.Id.Value.ToString("N")[..4].ToUpperInvariant()}  POS {pos.X:F1},{pos.Y:F1},{pos.Z:F1}";
+                selectedText = $"SELECTED: {selected.Id.Value.ToString("N")[..4].ToUpperInvariant()}  POS {pos.X:F1},{pos.Y:F1},{pos.Z:F1}  S {GetRenderScale(selected):F2}";
             }
         }
 
         DrawText(spriteBatch, pixel, selectedText, panelX + 10, panelY + 56, 1, new Color(206, 236, 228));
-        DrawText(spriteBatch, pixel, _editorStatusMessage.ToUpperInvariant(), panelX + 10, panelY + 72, 1, new Color(168, 244, 194));
+        var pendingText = $"PENDING ADD: {_editorCreatedObjects.Count}  PENDING DEL: {_editorDeletedStaticIndices.Count}";
+        DrawText(spriteBatch, pixel, pendingText, panelX + 10, panelY + 72, 1, new Color(206, 236, 228));
+        DrawText(spriteBatch, pixel, _editorStatusMessage.ToUpperInvariant(), panelX + 10, panelY + 82, 1, new Color(168, 244, 194));
+    }
+
+    private void CreateStaticObjectFromSelected(EntitySnapshot selected)
+    {
+        var sourcePosition = GetRenderPosition(selected);
+        var created = new EditorCreatedStaticObject(
+            sourcePosition + new Vector3(2f, 0f, 0f),
+            GetRenderYaw(selected),
+            GetRenderScale(selected),
+            GetRenderModelId(selected));
+
+        _editorCreatedObjects.Add(created);
+        _editorStatusMessage = "Neues Static Object erstellt (pending save)";
+    }
+
+    private void ToggleDeleteSelectedStaticObject(EntitySnapshot selected)
+    {
+        if (!selected.ZoneStaticIndex.HasValue)
+        {
+            _editorStatusMessage = "Objekt hat keinen static index";
+            return;
+        }
+
+        var index = selected.ZoneStaticIndex.Value;
+        if (_editorDeletedStaticIndices.Contains(index))
+        {
+            _editorDeletedStaticIndices.Remove(index);
+            _editorStatusMessage = $"Delete-Markierung entfernt (#{index})";
+        }
+        else
+        {
+            _editorDeletedStaticIndices.Add(index);
+            _editorStatusMessage = $"Objekt fuer Loeschen markiert (#{index})";
+        }
     }
 
     private Rectangle GetEditorToggleButtonRect()
@@ -1063,31 +1272,54 @@ public sealed class GrimGame : Game
         return bestEntity;
     }
 
-    private bool IsMouseOverGizmo(EntitySnapshot selectedEntity, MouseState mouse)
+    private bool TryPickGizmoAxis(EntitySnapshot selectedEntity, MouseState mouse, out GizmoAxis axis)
     {
-        var projection = Matrix.CreatePerspectiveFieldOfView(
-            MathHelper.ToRadians(60f),
-            GraphicsDevice.Viewport.AspectRatio,
-            0.1f,
-            250f);
-        var view = Matrix.CreateLookAt(ComputeCameraPosition(), _cameraTarget, Vector3.Up);
-        var position = GetRenderPosition(selectedEntity);
-        var projected = GraphicsDevice.Viewport.Project(position, projection, view, Matrix.Identity);
-        if (projected.Z is < 0f or > 1f)
+        var origin = GetRenderPosition(selectedEntity);
+        if (!ProjectWorldToScreen(origin, out var origin2D))
         {
+            axis = GizmoAxis.None;
             return false;
         }
 
-        var dx = projected.X - mouse.X;
-        var dy = projected.Y - mouse.Y;
-        return (dx * dx) + (dy * dy) <= (28f * 28f);
+        var cursor = new Vector2(mouse.X, mouse.Y);
+        var bestDistance = float.MaxValue;
+        var bestAxis = GizmoAxis.None;
+
+        var axisCandidates = new[]
+        {
+            (Axis: GizmoAxis.X, Direction: Vector3.UnitX),
+            (Axis: GizmoAxis.Y, Direction: Vector3.UnitY),
+            (Axis: GizmoAxis.Z, Direction: Vector3.UnitZ)
+        };
+
+        foreach (var candidate in axisCandidates)
+        {
+            var endPoint = origin + (candidate.Direction * 2.2f);
+            if (!ProjectWorldToScreen(endPoint, out var end2D))
+            {
+                continue;
+            }
+
+            var distance = DistancePointToSegment(cursor, origin2D, end2D);
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                bestAxis = candidate.Axis;
+            }
+        }
+
+        axis = bestDistance <= 12f ? bestAxis : GizmoAxis.None;
+        return axis != GizmoAxis.None;
     }
 
-    private void StartGizmoDrag(EntitySnapshot selectedEntity, MouseState mouse)
+    private void StartGizmoDrag(EntitySnapshot selectedEntity, MouseState mouse, GizmoAxis axis)
     {
         _isDraggingGizmo = true;
+        _activeGizmoAxis = axis;
         _draggedEntityId = selectedEntity.Id.Value;
-        var position = GetRenderPosition(selectedEntity);
+        _gizmoDragStartOverride = GetOrCreateEditorOverride(selectedEntity);
+        var position = _gizmoDragStartOverride.Position;
+        _gizmoDragStartMouse = new Vector2(mouse.X, mouse.Y);
         _dragPlaneY = position.Y;
 
         if (TryGetWorldPointOnPlane(mouse, _dragPlaneY, out var worldPoint))
@@ -1099,7 +1331,7 @@ public sealed class GrimGame : Game
             _dragOffset = Vector3.Zero;
         }
 
-        _editorStatusMessage = "Gizmo Drag gestartet";
+        _editorStatusMessage = $"Gizmo Drag gestartet ({axis})";
     }
 
     private void ContinueGizmoDrag(SnapshotView snapshotView, MouseState mouse)
@@ -1120,9 +1352,170 @@ public sealed class GrimGame : Game
             return;
         }
 
-        var newPosition = worldPoint + _dragOffset;
-        _editorOverrides[entity.Id.Value] = new EditorTransformOverride(newPosition, GetRenderYaw(entity));
+        var axisDirection = _activeGizmoAxis switch
+        {
+            GizmoAxis.X => Vector3.UnitX,
+            GizmoAxis.Y => Vector3.UnitY,
+            GizmoAxis.Z => Vector3.UnitZ,
+            _ => Vector3.Zero
+        };
+
+        if (axisDirection == Vector3.Zero)
+        {
+            return;
+        }
+
+        var origin = _gizmoDragStartOverride.Position;
+        if (!ProjectWorldToScreen(origin, out var origin2D) || !ProjectWorldToScreen(origin + (axisDirection * 2.2f), out var axisEnd2D))
+        {
+            return;
+        }
+
+        var axisScreen = axisEnd2D - origin2D;
+        var axisScreenLength = axisScreen.Length();
+        if (axisScreenLength < 0.001f)
+        {
+            return;
+        }
+
+        var axisScreenDirection = axisScreen / axisScreenLength;
+        var currentMouse = new Vector2(mouse.X, mouse.Y);
+        var mouseDelta = currentMouse - _gizmoDragStartMouse;
+        var deltaPixelsOnAxis = Vector2.Dot(mouseDelta, axisScreenDirection);
+        var worldUnitsPerPixel = 2.2f / axisScreenLength;
+        var deltaWorld = deltaPixelsOnAxis * worldUnitsPerPixel;
+
+        var newPosition = _gizmoDragStartOverride.Position + (axisDirection * deltaWorld);
+        _editorOverrides[entity.Id.Value] = _gizmoDragStartOverride with { Position = newPosition };
         _editorStatusMessage = "Gizmo-Drag aktiv";
+    }
+
+    private void CommitGizmoDragCommand(SnapshotView snapshotView)
+    {
+        if (!_draggedEntityId.HasValue)
+        {
+            return;
+        }
+
+        var entity = snapshotView.Entities.FirstOrDefault(item => item.Id.Value == _draggedEntityId.Value);
+        if (entity is null)
+        {
+            return;
+        }
+
+        if (!_editorOverrides.TryGetValue(entity.Id.Value, out var current))
+        {
+            return;
+        }
+
+        if (current == _gizmoDragStartOverride)
+        {
+            return;
+        }
+
+        PushEditorCommand(new EditorTransformCommand(entity.Id.Value, _gizmoDragStartOverride, current, $"Gizmo {_activeGizmoAxis} Drag"));
+    }
+
+    private void PushEditorCommand(EditorTransformCommand command)
+    {
+        _undoCommands.Push(command);
+        _redoCommands.Clear();
+    }
+
+    private void UndoLastEditorCommand()
+    {
+        if (_undoCommands.Count == 0)
+        {
+            _editorStatusMessage = "Undo: keine Aktion";
+            return;
+        }
+
+        var command = _undoCommands.Pop();
+        if (command.Before is null)
+        {
+            _editorOverrides.Remove(command.EntityId);
+        }
+        else
+        {
+            _editorOverrides[command.EntityId] = command.Before.Value;
+        }
+
+        _redoCommands.Push(command);
+        _editorStatusMessage = $"Undo: {command.Label}";
+    }
+
+    private void RedoLastEditorCommand()
+    {
+        if (_redoCommands.Count == 0)
+        {
+            _editorStatusMessage = "Redo: keine Aktion";
+            return;
+        }
+
+        var command = _redoCommands.Pop();
+        if (command.After is null)
+        {
+            _editorOverrides.Remove(command.EntityId);
+        }
+        else
+        {
+            _editorOverrides[command.EntityId] = command.After.Value;
+        }
+
+        _undoCommands.Push(command);
+        _editorStatusMessage = $"Redo: {command.Label}";
+    }
+
+    private EditorTransformOverride GetOrCreateEditorOverride(EntitySnapshot entity)
+    {
+        if (_editorOverrides.TryGetValue(entity.Id.Value, out var value))
+        {
+            return value;
+        }
+
+        var created = new EditorTransformOverride(
+            new Vector3(entity.Position.X, entity.Position.Y, entity.Position.Z),
+            entity.YawRadians,
+            1f,
+            false,
+            null);
+        _editorOverrides[entity.Id.Value] = created;
+        return created;
+    }
+
+    private bool ProjectWorldToScreen(Vector3 worldPoint, out Vector2 screenPoint)
+    {
+        var projection = Matrix.CreatePerspectiveFieldOfView(
+            MathHelper.ToRadians(60f),
+            GraphicsDevice.Viewport.AspectRatio,
+            0.1f,
+            250f);
+        var view = Matrix.CreateLookAt(ComputeCameraPosition(), _cameraTarget, Vector3.Up);
+
+        var projected = GraphicsDevice.Viewport.Project(worldPoint, projection, view, Matrix.Identity);
+        if (projected.Z is < 0f or > 1f)
+        {
+            screenPoint = Vector2.Zero;
+            return false;
+        }
+
+        screenPoint = new Vector2(projected.X, projected.Y);
+        return true;
+    }
+
+    private static float DistancePointToSegment(Vector2 point, Vector2 segmentA, Vector2 segmentB)
+    {
+        var segment = segmentB - segmentA;
+        var segmentLengthSquared = segment.LengthSquared();
+        if (segmentLengthSquared < 0.0001f)
+        {
+            return Vector2.Distance(point, segmentA);
+        }
+
+        var t = Vector2.Dot(point - segmentA, segment) / segmentLengthSquared;
+        t = MathHelper.Clamp(t, 0f, 1f);
+        var projection = segmentA + (segment * t);
+        return Vector2.Distance(point, projection);
     }
 
     private bool TryGetWorldPointOnPlane(MouseState mouse, float planeY, out Vector3 worldPoint)
@@ -1210,5 +1603,22 @@ public sealed class GrimGame : Game
         return new Color(red, green, blue);
     }
 
-    private readonly record struct EditorTransformOverride(Vector3 Position, float YawRadians);
+    private readonly record struct EditorTransformOverride(
+        Vector3 Position,
+        float YawRadians,
+        float Scale,
+        bool HasModelOverride,
+        string? ModelIdOverride);
+
+    private readonly record struct EditorTransformCommand(Guid EntityId, EditorTransformOverride? Before, EditorTransformOverride? After, string Label);
+
+    private readonly record struct EditorCreatedStaticObject(Vector3 Position, float YawRadians, float Scale, string? ModelId);
+
+    private enum GizmoAxis
+    {
+        None,
+        X,
+        Y,
+        Z
+    }
 }

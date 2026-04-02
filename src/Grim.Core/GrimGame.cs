@@ -48,6 +48,9 @@ public sealed class GrimGame : Game
     private KeyboardState _previousKeyboardState;
     private readonly List<string> _paletteModelIds = new();
     private int _paletteIndex;
+    private bool _isDraggingPaletteModel;
+    private string? _draggingPaletteModelId;
+    private Vector2 _paletteDragStartScreen;
 
     private static readonly Vector3[] UnitCubeCorners =
     [
@@ -310,8 +313,20 @@ public sealed class GrimGame : Game
             CyclePalette(1);
         }
 
-        if (IsLeftClick(mouse) && TrySelectPaletteEntryByMouse(mouse))
+        if (IsLeftClick(mouse) && TryStartPaletteDrag(mouse))
         {
+            return;
+        }
+
+        if (_isDraggingPaletteModel)
+        {
+            if (IsLeftRelease(mouse))
+            {
+                CommitPaletteDragDrop(mouse);
+                return;
+            }
+
+            _editorStatusMessage = $"Drag: {_draggingPaletteModelId}";
             return;
         }
 
@@ -852,6 +867,11 @@ public sealed class GrimGame : Game
         }
 
         DrawCreatedStaticObjects(effect, view, projection);
+
+        if (_isDraggingPaletteModel)
+        {
+            DrawPaletteDropPreview3D(effect, view, projection);
+        }
     }
 
     private void DrawCreatedStaticObjects(BasicEffect effect, Matrix view, Matrix projection)
@@ -923,7 +943,7 @@ public sealed class GrimGame : Game
         }
     }
 
-    private bool TryDrawRegisteredModel(BasicEffect effect, string modelId, Matrix view, Matrix projection, Vector3 position, float yaw, float scaleMultiplier)
+    private bool TryDrawRegisteredModel(BasicEffect effect, string modelId, Matrix view, Matrix projection, Vector3 position, float yaw, float scaleMultiplier, float alpha = 1f)
     {
         if (_modelRegistry is null || string.IsNullOrWhiteSpace(modelId))
         {
@@ -945,6 +965,7 @@ public sealed class GrimGame : Game
         effect.TextureEnabled = true;
         effect.Texture = modelAsset.Texture;
         effect.VertexColorEnabled = false;
+        effect.Alpha = MathHelper.Clamp(alpha, 0.05f, 1f);
 
         foreach (var pass in effect.CurrentTechnique.Passes)
         {
@@ -962,7 +983,63 @@ public sealed class GrimGame : Game
         effect.TextureEnabled = false;
         effect.Texture = null;
         effect.VertexColorEnabled = true;
+        effect.Alpha = 1f;
         return true;
+    }
+
+    private void DrawPaletteDropPreview3D(BasicEffect effect, Matrix view, Matrix projection)
+    {
+        if (string.IsNullOrWhiteSpace(_draggingPaletteModelId))
+        {
+            return;
+        }
+
+        var mouse = Mouse.GetState();
+        if (!TryGetWorldPointOnPlane(mouse, 0f, out var worldPoint))
+        {
+            return;
+        }
+
+        var position = new Vector3(worldPoint.X, 0f, worldPoint.Z);
+        var yaw = MathF.Atan2(GetHorizontalForwardVector().Z, GetHorizontalForwardVector().X);
+
+        var previousBlend = GraphicsDevice.BlendState;
+        var previousDepth = GraphicsDevice.DepthStencilState;
+        GraphicsDevice.BlendState = BlendState.AlphaBlend;
+        GraphicsDevice.DepthStencilState = DepthStencilState.DepthRead;
+
+        var drawn = TryDrawRegisteredModel(effect, _draggingPaletteModelId, view, projection, position, yaw, 1f, 0.45f);
+        if (!drawn)
+        {
+            var world = Matrix.CreateScale(new Vector3(1.8f, 2.4f, 1.8f)) *
+                        Matrix.CreateRotationY(yaw) *
+                        Matrix.CreateTranslation(position.X, position.Y + 1.2f, position.Z);
+
+            var vertices = BuildCubeVertices(new Color(120, 216, 255, 138));
+            effect.World = world;
+            effect.View = view;
+            effect.Projection = projection;
+            effect.Alpha = 0.45f;
+
+            foreach (var pass in effect.CurrentTechnique.Passes)
+            {
+                pass.Apply();
+                GraphicsDevice.DrawUserIndexedPrimitives(
+                    PrimitiveType.TriangleList,
+                    vertices,
+                    0,
+                    vertices.Length,
+                    UnitCubeIndices,
+                    0,
+                    UnitCubeIndices.Length / 3);
+            }
+
+            effect.Alpha = 1f;
+        }
+
+        DrawEditorSelectionRing(effect, position + new Vector3(0f, 0.05f, 0f), view, projection);
+        GraphicsDevice.BlendState = previousBlend;
+        GraphicsDevice.DepthStencilState = previousDepth;
     }
 
     private void DrawLocalHighlightRing(BasicEffect effect, Grim.Shared.Vector3Snapshot position, Matrix view, Matrix projection)
@@ -1240,6 +1317,7 @@ public sealed class GrimGame : Game
         DrawText(spriteBatch, pixel, _editorStatusMessage.ToUpperInvariant(), panelX + 10, panelY + 140, 2, new Color(168, 244, 194));
 
         DrawMeshPaletteList(spriteBatch, pixel);
+        DrawPaletteDragPreview(spriteBatch, pixel);
     }
 
     private void DrawMeshPaletteList(SpriteBatch spriteBatch, Texture2D pixel)
@@ -1361,20 +1439,7 @@ public sealed class GrimGame : Game
 
     private bool TrySelectPaletteEntryByMouse(MouseState mouse)
     {
-        if (_paletteModelIds.Count == 0)
-        {
-            return false;
-        }
-
-        var panel = GetMeshPalettePanelRect();
-        var index = EditorPaletteHitTest.TryGetPaletteIndex(
-            mouse.X,
-            mouse.Y,
-            panel.X,
-            panel.Y,
-            panel.Width,
-            _paletteModelIds.Count);
-
+        var index = GetPaletteIndexUnderMouse(mouse);
         if (!index.HasValue)
         {
             return false;
@@ -1383,6 +1448,89 @@ public sealed class GrimGame : Game
         _paletteIndex = index.Value;
         _editorStatusMessage = $"Palette: {_paletteModelIds[index.Value]}";
         return true;
+    }
+
+    private bool TryStartPaletteDrag(MouseState mouse)
+    {
+        if (!TrySelectPaletteEntryByMouse(mouse))
+        {
+            return false;
+        }
+
+        _isDraggingPaletteModel = true;
+        _draggingPaletteModelId = _paletteModelIds[_paletteIndex];
+        _paletteDragStartScreen = new Vector2(mouse.X, mouse.Y);
+        return true;
+    }
+
+    private void CommitPaletteDragDrop(MouseState mouse)
+    {
+        var dragDistance = Vector2.Distance(_paletteDragStartScreen, new Vector2(mouse.X, mouse.Y));
+        var droppedOverPalette = GetPaletteIndexUnderMouse(mouse).HasValue;
+        var modelId = _draggingPaletteModelId;
+
+        _isDraggingPaletteModel = false;
+        _draggingPaletteModelId = null;
+
+        if (dragDistance < 10f || droppedOverPalette || string.IsNullOrWhiteSpace(modelId))
+        {
+            _editorStatusMessage = "Palette ausgewaehlt";
+            return;
+        }
+
+        CreateStaticObjectFromPaletteDrop(modelId, mouse);
+    }
+
+    private int? GetPaletteIndexUnderMouse(MouseState mouse)
+    {
+        if (_paletteModelIds.Count == 0)
+        {
+            return null;
+        }
+
+        var panel = GetMeshPalettePanelRect();
+        return EditorPaletteHitTest.TryGetPaletteIndex(
+            mouse.X,
+            mouse.Y,
+            panel.X,
+            panel.Y,
+            panel.Width,
+            _paletteModelIds.Count);
+    }
+
+    private void CreateStaticObjectFromPaletteDrop(string modelId, MouseState mouse)
+    {
+        var placement = TryGetWorldPointOnPlane(mouse, 0f, out var worldPoint)
+            ? new Vector3(worldPoint.X, 0f, worldPoint.Z)
+            : GetEditorPlacementPosition();
+
+        var created = new EditorCreatedStaticObject(
+            placement,
+            MathF.Atan2(GetHorizontalForwardVector().Z, GetHorizontalForwardVector().X),
+            1f,
+            modelId);
+
+        _editorCreatedObjects.Add(created);
+        _editorStatusMessage = $"Objekt gedroppt: {modelId}";
+    }
+
+    private void DrawPaletteDragPreview(SpriteBatch spriteBatch, Texture2D pixel)
+    {
+        if (!_isDraggingPaletteModel || string.IsNullOrWhiteSpace(_draggingPaletteModelId))
+        {
+            return;
+        }
+
+        var mouse = Mouse.GetState();
+        var text = $"DROP: {FormatModelIdForHud(_draggingPaletteModelId)}";
+        var scale = 2;
+        var width = MeasureTextWidth(text, scale);
+        var height = 5 * scale;
+        var x = mouse.X + 14;
+        var y = mouse.Y + 14;
+
+        spriteBatch.Draw(pixel, new Rectangle(x - 6, y - 4, width + 12, height + 8), new Color(10, 14, 22, 228));
+        DrawText(spriteBatch, pixel, text, x, y, scale, new Color(245, 247, 255));
     }
 
     private static string FormatModelIdForHud(string modelId)
@@ -1791,6 +1939,11 @@ public sealed class GrimGame : Game
     private bool IsLeftClick(MouseState mouse)
     {
         return mouse.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released;
+    }
+
+    private bool IsLeftRelease(MouseState mouse)
+    {
+        return mouse.LeftButton == ButtonState.Released && _previousMouseState.LeftButton == ButtonState.Pressed;
     }
 
     private static Color StatusColor(string status)

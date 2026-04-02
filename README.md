@@ -17,7 +17,7 @@ MMO-first C# game foundation with a MonoGame client host, a headless server skel
 
 - .NET SDK 8.0+
 - On Linux for DesktopGL runtime: SDL2 and OpenAL packages
-- jq (optional, for content validation script)
+- Blender or fbx2gltf (optional, only for FBX import conversion)
 
 ## Build
 
@@ -106,18 +106,24 @@ FBX import pipeline (FBX -> glTF):
 
 - Import all jobs and update registry automatically:
 
-	./tools/import-models.sh
+	dotnet run --project src/Grim.Tools/Grim.Tools.csproj -- models import
 
 - Import one model by ID:
 
-	./tools/import-models.sh --id pillar_v1
+	dotnet run --project src/Grim.Tools/Grim.Tools.csproj -- models import --id pillar_v1
 
 - Legacy direct conversion is still available:
 
-	./tools/convert-fbx-to-gltf.sh content/models/my_mesh/my_mesh.fbx content/models/my_mesh/my_mesh.gltf
+	dotnet run --project src/Grim.Tools/Grim.Tools.csproj -- models convert content/models/my_mesh/my_mesh.fbx content/models/my_mesh/my_mesh.gltf
 
 - Place the `modelId` on static objects in `content/zones/start_zone.json`.
-- Run `./tools/validate-content.sh` to verify JSON contracts and stale/missing FBX conversions.
+- Run .NET validation (cross-platform):
+
+	dotnet run --project src/Grim.Tools/Grim.Tools.csproj -- content validate
+
+- Legacy shell validation is still available temporarily:
+
+	./tools/validate-content.sh
 
 ## Current Scope
 

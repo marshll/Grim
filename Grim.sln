@@ -1,4 +1,4 @@
-Microsoft Visual Studio Solution File, Format Version 12.00
+﻿Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
@@ -13,6 +13,10 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Grim.Server", "src\Grim.Server\Grim.Server.csproj", "{39C8438A-7604-42D2-80E1-1A625B7A74E8}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Grim.Tests", "tests\Grim.Tests\Grim.Tests.csproj", "{56CC29A2-7967-4AA5-B251-EA5667D6B01E}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{861F4F4F-04E0-4BE6-930B-BC3238EF424B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Grim.Tools", "src\Grim.Tools\Grim.Tools.csproj", "{4ADF6419-EC68-43ED-9BF8-25C08B82524A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -44,8 +48,15 @@ Global
 		{56CC29A2-7967-4AA5-B251-EA5667D6B01E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{56CC29A2-7967-4AA5-B251-EA5667D6B01E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{56CC29A2-7967-4AA5-B251-EA5667D6B01E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4ADF6419-EC68-43ED-9BF8-25C08B82524A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4ADF6419-EC68-43ED-9BF8-25C08B82524A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4ADF6419-EC68-43ED-9BF8-25C08B82524A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4ADF6419-EC68-43ED-9BF8-25C08B82524A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{4ADF6419-EC68-43ED-9BF8-25C08B82524A} = {861F4F4F-04E0-4BE6-930B-BC3238EF424B}
 	EndGlobalSection
 EndGlobal

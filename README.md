@@ -71,8 +71,16 @@ Client 3D debug controls:
 Editor controls (current foundation):
 
 - Start with `--editor`
-- `F1`: toggle editor mode on/off
+- Editor mode is active immediately when started with `--editor`
+- `W/A/S/D`: fly editor camera on X/Z plane
+- `Q/E`: move editor camera down/up
+- `Right Mouse Drag`: look around in editor mode
+- `F`: focus camera on selected object
 - `Tab`: select next object
+- Mesh palette panel shows all registered models on screen
+- Click a mesh entry to make it the active placement model
+- `[` / `]`: cycle active model palette entry
+- `Insert`: place the current palette model on the ground under the camera aim
 - `LMB` on gizmo axis: drag selected object on X/Y/Z axis
 - `I/J/K/L`: move selected object on X/Z plane
 - `U/O`: move selected object on Y axis
@@ -82,6 +90,19 @@ Editor controls (current foundation):
 - `Ctrl+Z`: undo last editor command
 - `Ctrl+Y` or `Ctrl+Shift+Z`: redo editor command
 - `F5`: save current editor overrides to `content/zones/start_zone.json`
+
+Placeholder level-blockout workflow:
+
+- Generate starter meshes directly in .NET:
+
+	dotnet run --project src/Grim.Tools/Grim.Tools.csproj -- models scaffold
+
+- Optional: generate only selected shapes:
+
+	dotnet run --project src/Grim.Tools/Grim.Tools.csproj -- models scaffold --shapes ground_tile_v1,wall_v1
+
+- The scaffold currently creates `ground_tile_v1`, `rock_v1`, `wall_v1`, and `pillar_v1` and upserts them into `content/models/registry.json`.
+- Use the editor palette (`[` / `]`) to switch between registered models before placing objects.
 
 FBX import pipeline (FBX -> glTF):
 

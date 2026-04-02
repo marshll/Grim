@@ -12,39 +12,277 @@
   ],
   "staticObjects": [
     {
+      "x": -6,
+      "y": 0,
+      "z": -6,
+      "yawRadians": 0,
+      "modelId": "ground_tile_v1"
+    },
+    {
+      "x": -2,
+      "y": 0,
+      "z": -6,
+      "yawRadians": 0,
+      "modelId": "ground_tile_v1"
+    },
+    {
+      "x": 2,
+      "y": 0,
+      "z": -6,
+      "yawRadians": 0,
+      "modelId": "ground_tile_v1"
+    },
+    {
       "x": 6,
       "y": 0,
       "z": -6,
-      "yawRadians": 0.2,
-      "modelId": "obelisk_v1"
-    },
-    {
-      "x": -6.4727087,
-      "y": 0,
-      "z": -6.686657,
-      "yawRadians": 1.1,
-      "modelId": null
-    },
-    {
-      "x": 9.863736,
-      "y": 0,
-      "z": 3.9384975,
-      "yawRadians": 2.2,
-      "modelId": null
-    },
-    {
-      "x": -10.8862505,
-      "y": 0,
-      "z": 2.716961,
-      "yawRadians": -0.4,
-      "modelId": null
-    },
-    {
-      "x": 3.4764805,
-      "y": 0,
-      "z": -12.133883,
       "yawRadians": 0,
-      "modelId": null
+      "modelId": "ground_tile_v1"
+    },
+    {
+      "x": -6,
+      "y": 0,
+      "z": -2,
+      "yawRadians": 0,
+      "modelId": "ground_tile_v1"
+    },
+    {
+      "x": -2,
+      "y": 0,
+      "z": -2,
+      "yawRadians": 0,
+      "modelId": "ground_tile_v1"
+    },
+    {
+      "x": 2,
+      "y": 0,
+      "z": -2,
+      "yawRadians": 0,
+      "modelId": "ground_tile_v1"
+    },
+    {
+      "x": 6,
+      "y": 0,
+      "z": -2,
+      "yawRadians": 0,
+      "modelId": "ground_tile_v1"
+    },
+    {
+      "x": -6,
+      "y": 0,
+      "z": 2,
+      "yawRadians": 0,
+      "modelId": "ground_tile_v1"
+    },
+    {
+      "x": -2,
+      "y": 0,
+      "z": 2,
+      "yawRadians": 0,
+      "modelId": "ground_tile_v1"
+    },
+    {
+      "x": 2,
+      "y": 0,
+      "z": 2,
+      "yawRadians": 0,
+      "modelId": "ground_tile_v1"
+    },
+    {
+      "x": 6,
+      "y": 0,
+      "z": 2,
+      "yawRadians": 0,
+      "modelId": "ground_tile_v1"
+    },
+    {
+      "x": -6,
+      "y": 0,
+      "z": 6,
+      "yawRadians": 0,
+      "modelId": "ground_tile_v1"
+    },
+    {
+      "x": -2,
+      "y": 0,
+      "z": 6,
+      "yawRadians": 0,
+      "modelId": "ground_tile_v1"
+    },
+    {
+      "x": 2,
+      "y": 0,
+      "z": 6,
+      "yawRadians": 0,
+      "modelId": "ground_tile_v1"
+    },
+    {
+      "x": 6,
+      "y": 0,
+      "z": 6,
+      "yawRadians": 0,
+      "modelId": "ground_tile_v1"
+    },
+    {
+      "x": -8,
+      "y": 0,
+      "z": -10,
+      "yawRadians": 0,
+      "modelId": "wall_v1"
+    },
+    {
+      "x": -3,
+      "y": 0,
+      "z": -10,
+      "yawRadians": 0,
+      "modelId": "wall_v1"
+    },
+    {
+      "x": 2,
+      "y": 0,
+      "z": -10,
+      "yawRadians": 0,
+      "modelId": "wall_v1"
+    },
+    {
+      "x": 7,
+      "y": 0,
+      "z": -10,
+      "yawRadians": 0,
+      "modelId": "wall_v1"
+    },
+    {
+      "x": -8,
+      "y": 0,
+      "z": 10,
+      "yawRadians": 0,
+      "modelId": "wall_v1"
+    },
+    {
+      "x": -3,
+      "y": 0,
+      "z": 10,
+      "yawRadians": 0,
+      "modelId": "wall_v1"
+    },
+    {
+      "x": 2,
+      "y": 0,
+      "z": 10,
+      "yawRadians": 0,
+      "modelId": "wall_v1"
+    },
+    {
+      "x": 7,
+      "y": 0,
+      "z": 10,
+      "yawRadians": 0,
+      "modelId": "wall_v1"
+    },
+    {
+      "x": -10,
+      "y": 0,
+      "z": -6,
+      "yawRadians": 1.5707964,
+      "modelId": "wall_v1"
+    },
+    {
+      "x": -10,
+      "y": 0,
+      "z": -1,
+      "yawRadians": 1.5707964,
+      "modelId": "wall_v1"
+    },
+    {
+      "x": -10,
+      "y": 0,
+      "z": 4,
+      "yawRadians": 1.5707964,
+      "modelId": "wall_v1"
+    },
+    {
+      "x": 10,
+      "y": 0,
+      "z": -6,
+      "yawRadians": 1.5707964,
+      "modelId": "wall_v1"
+    },
+    {
+      "x": 10,
+      "y": 0,
+      "z": -1,
+      "yawRadians": 1.5707964,
+      "modelId": "wall_v1"
+    },
+    {
+      "x": 10,
+      "y": 0,
+      "z": 4,
+      "yawRadians": 1.5707964,
+      "modelId": "wall_v1"
+    },
+    {
+      "x": -9.5,
+      "y": 0,
+      "z": -9.5,
+      "yawRadians": 0,
+      "modelId": "pillar_v1"
+    },
+    {
+      "x": 9.5,
+      "y": 0,
+      "z": -9.5,
+      "yawRadians": 0,
+      "modelId": "pillar_v1"
+    },
+    {
+      "x": -9.5,
+      "y": 0,
+      "z": 9.5,
+      "yawRadians": 0,
+      "modelId": "pillar_v1"
+    },
+    {
+      "x": 9.5,
+      "y": 0,
+      "z": 9.5,
+      "yawRadians": 0,
+      "modelId": "pillar_v1"
+    },
+    {
+      "x": -4.5,
+      "y": 0,
+      "z": -3.5,
+      "yawRadians": 0.3,
+      "modelId": "rock_v1"
+    },
+    {
+      "x": 4.2,
+      "y": 0,
+      "z": -2.7,
+      "yawRadians": -0.4,
+      "modelId": "rock_v1"
+    },
+    {
+      "x": -2.3,
+      "y": 0,
+      "z": 4.8,
+      "yawRadians": 1.1,
+      "modelId": "rock_v1"
+    },
+    {
+      "x": 5.7,
+      "y": 0,
+      "z": 3.9,
+      "yawRadians": -0.9,
+      "modelId": "rock_v1"
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "yawRadians": 0,
+      "modelId": "obelisk_v1"
     }
   ]
 }

@@ -63,6 +63,26 @@ switch (command)
 		Console.WriteLine(result.Message);
 		return 0;
 	}
+	case "models scaffold":
+	{
+		var resolvedRepoRoot = options.RepoRoot ?? ResolveRepositoryRoot();
+		if (resolvedRepoRoot is null)
+		{
+			Console.Error.WriteLine("Could not resolve repository root. Provide --repo-root <path>.");
+			return 1;
+		}
+
+		var generator = new PlaceholderMeshGenerator();
+		var result = generator.Generate(resolvedRepoRoot, options.ShapesFilter);
+		if (!result.Success)
+		{
+			Console.Error.WriteLine(result.Message);
+			return 1;
+		}
+
+		Console.WriteLine(result.Message);
+		return 0;
+	}
 	case "help":
 		PrintUsage();
 		return 0;
@@ -106,6 +126,19 @@ static string? ParseCommand(string[] args, out CliOptions? options)
 			continue;
 		}
 
+		if (string.Equals(args[i], "--shapes", StringComparison.OrdinalIgnoreCase))
+		{
+			if (i + 1 >= args.Length)
+			{
+				options = null;
+				return null;
+			}
+
+			options.ShapesFilter = args[i + 1];
+			i++;
+			continue;
+		}
+
 		commandParts.Add(args[i]);
 	}
 
@@ -133,6 +166,11 @@ static string? ParseCommand(string[] args, out CliOptions? options)
 	if (commandParts.Count >= 2 && string.Equals(commandParts[0], "models", StringComparison.OrdinalIgnoreCase) && string.Equals(commandParts[1], "import", StringComparison.OrdinalIgnoreCase))
 	{
 		return "models import";
+	}
+
+	if (commandParts.Count >= 2 && string.Equals(commandParts[0], "models", StringComparison.OrdinalIgnoreCase) && string.Equals(commandParts[1], "scaffold", StringComparison.OrdinalIgnoreCase))
+	{
+		return "models scaffold";
 	}
 
 	if (commandParts.Count >= 2 && string.Equals(commandParts[0], "content", StringComparison.OrdinalIgnoreCase) && string.Equals(commandParts[1], "validate", StringComparison.OrdinalIgnoreCase))
@@ -168,6 +206,7 @@ static void PrintUsage()
 	Console.WriteLine("Usage:");
 	Console.WriteLine("  dotnet run --project src/Grim.Tools/Grim.Tools.csproj -- content validate [--repo-root <path>]");
 	Console.WriteLine("  dotnet run --project src/Grim.Tools/Grim.Tools.csproj -- models import [--id <model_id>] [--repo-root <path>]");
+	Console.WriteLine("  dotnet run --project src/Grim.Tools/Grim.Tools.csproj -- models scaffold [--shapes all|ground_tile_v1,rock_v1] [--repo-root <path>]");
 	Console.WriteLine("  dotnet run --project src/Grim.Tools/Grim.Tools.csproj -- models convert <input.fbx> <output.gltf>");
 }
 
@@ -175,6 +214,7 @@ internal sealed class CliOptions
 {
 	public string? RepoRoot { get; set; }
 	public string? ModelIdFilter { get; set; }
+	public string? ShapesFilter { get; set; }
 	public string? InputFbx { get; set; }
 	public string? OutputGltf { get; set; }
 }

@@ -40,10 +40,14 @@ public sealed class GrimGame : Game
     private float _cameraPitch = 0.85f;
     private float _cameraDistance = 24f;
     private Vector3 _cameraTarget = Vector3.Zero;
+    private Vector3 _editorFreeCameraPosition = new(0f, 8f, 16f);
     private float _playerYawRadians;
     private bool _cameraInitialized;
+    private bool _editorFreeCameraInitialized;
     private MouseState _previousMouseState;
     private KeyboardState _previousKeyboardState;
+    private readonly List<string> _paletteModelIds = new();
+    private int _paletteIndex;
 
     private static readonly Vector3[] UnitCubeCorners =
     [
@@ -132,7 +136,7 @@ public sealed class GrimGame : Game
     {
         _clientTag = launchOptions.ClientTag;
         _editorEnabled = launchOptions.EditorEnabled;
-        _editorModeActive = false;
+        _editorModeActive = launchOptions.EditorEnabled;
         _zoneEditorPersistence = new ZoneEditorPersistence();
         _client = new ClientBootstrap(
             launchOptions.Host,
@@ -171,6 +175,13 @@ public sealed class GrimGame : Game
         };
 
         _modelRegistry = RuntimeModelRegistry.TryLoadFromRepository();
+        _paletteModelIds.Clear();
+        if (_modelRegistry is not null)
+        {
+            _paletteModelIds.AddRange(_modelRegistry.GetModelIds());
+        }
+
+        _paletteIndex = 0;
     }
 
     protected override void Update(GameTime gameTime)
@@ -179,8 +190,6 @@ public sealed class GrimGame : Game
         var keyboard = Keyboard.GetState();
         var mouse = Mouse.GetState();
 
-        HandleEditorModeToggle(keyboard);
-        var toggleButtonClicked = HandleEditorModeToggleButton(mouse);
         if (_editorModeActive)
         {
             _client.Runtime.SetMovementIntent(0f, 0f, _playerYawRadians);
@@ -195,7 +204,7 @@ public sealed class GrimGame : Game
 
         if (_editorModeActive)
         {
-            HandleEditorInput(snapshotView, keyboard, mouse, deltaSeconds, toggleButtonClicked);
+            HandleEditorInput(snapshotView, keyboard, mouse, deltaSeconds);
         }
 
         _client.Update(gameTime.ElapsedGameTime);
@@ -265,70 +274,10 @@ public sealed class GrimGame : Game
         _client.Runtime.SetMovementIntent(moveX, moveZ, _playerYawRadians);
     }
 
-    private void HandleEditorModeToggle(KeyboardState keyboard)
-    {
-        if (!_editorEnabled)
-        {
-            _editorModeActive = false;
-            return;
-        }
-
-        if (IsNewKeyPress(Keys.F1, keyboard))
-        {
-            _editorModeActive = !_editorModeActive;
-            _editorStatusMessage = _editorModeActive ? "Editor aktiviert" : "Editor deaktiviert";
-            if (!_editorModeActive)
-            {
-                _selectedEntityId = null;
-                _isDraggingGizmo = false;
-                _activeGizmoAxis = GizmoAxis.None;
-                _draggedEntityId = null;
-            }
-        }
-    }
-
-    private bool HandleEditorModeToggleButton(MouseState mouse)
-    {
-        if (!_editorEnabled)
-        {
-            return false;
-        }
-
-        if (!IsLeftClick(mouse))
-        {
-            return false;
-        }
-
-        var buttonRect = GetEditorToggleButtonRect();
-        if (!buttonRect.Contains(mouse.X, mouse.Y))
-        {
-            return false;
-        }
-
-        _editorModeActive = !_editorModeActive;
-        _editorStatusMessage = _editorModeActive ? "Editor aktiviert" : "Editor deaktiviert";
-        if (!_editorModeActive)
-        {
-            _selectedEntityId = null;
-            _isDraggingGizmo = false;
-            _activeGizmoAxis = GizmoAxis.None;
-            _draggedEntityId = null;
-        }
-
-        return true;
-    }
-
-    private void HandleEditorInput(SnapshotView snapshotView, KeyboardState keyboard, MouseState mouse, float deltaSeconds, bool toggleButtonClicked)
+    private void HandleEditorInput(SnapshotView snapshotView, KeyboardState keyboard, MouseState mouse, float deltaSeconds)
     {
         var entities = snapshotView.Entities.ToArray();
-        if (entities.Length == 0)
-        {
-            _selectedEntityId = null;
-            _isDraggingGizmo = false;
-            _activeGizmoAxis = GizmoAxis.None;
-            _draggedEntityId = null;
-            return;
-        }
+        var hasEntities = entities.Length > 0;
 
         var controlDown = keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
         var shiftDown = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
@@ -348,6 +297,50 @@ public sealed class GrimGame : Game
         if (controlDown && IsNewKeyPress(Keys.Y, keyboard))
         {
             RedoLastEditorCommand();
+            return;
+        }
+
+        if (IsNewKeyPress(Keys.OemOpenBrackets, keyboard))
+        {
+            CyclePalette(-1);
+        }
+
+        if (IsNewKeyPress(Keys.OemCloseBrackets, keyboard))
+        {
+            CyclePalette(1);
+        }
+
+        if (IsLeftClick(mouse) && TrySelectPaletteEntryByMouse(mouse))
+        {
+            return;
+        }
+
+        if (IsNewKeyPress(Keys.Insert, keyboard))
+        {
+            var currentPaletteModelId = GetCurrentPaletteModelId();
+            if (!string.IsNullOrWhiteSpace(currentPaletteModelId))
+            {
+                CreateStaticObjectFromPalette(currentPaletteModelId);
+                return;
+            }
+
+            if (hasEntities)
+            {
+                var selectedForCreate = GetSelectedEntity(snapshotView);
+                if (selectedForCreate is not null)
+                {
+                    CreateStaticObjectFromSelected(selectedForCreate);
+                    return;
+                }
+            }
+        }
+
+        if (!hasEntities)
+        {
+            _selectedEntityId = null;
+            _isDraggingGizmo = false;
+            _activeGizmoAxis = GizmoAxis.None;
+            _draggedEntityId = null;
             return;
         }
 
@@ -371,17 +364,7 @@ public sealed class GrimGame : Game
             _editorStatusMessage = "Objekt per TAB ausgewaehlt";
         }
 
-        if (IsNewKeyPress(Keys.Insert, keyboard))
-        {
-            var selectedForCreate = GetSelectedEntity(snapshotView);
-            if (selectedForCreate is not null)
-            {
-                CreateStaticObjectFromSelected(selectedForCreate);
-                return;
-            }
-        }
-
-        if (!toggleButtonClicked && IsLeftClick(mouse) && !GetEditorToggleButtonRect().Contains(mouse.X, mouse.Y))
+        if (IsLeftClick(mouse))
         {
             var selectedEntity = GetSelectedEntity(snapshotView);
             if (selectedEntity is not null && TryPickGizmoAxis(selectedEntity, mouse, out var axis))
@@ -577,8 +560,7 @@ public sealed class GrimGame : Game
             GraphicsDevice.Viewport.AspectRatio,
             0.1f,
             250f);
-        var cameraPosition = ComputeCameraPosition();
-        var view = Matrix.CreateLookAt(cameraPosition, _cameraTarget, Vector3.Up);
+        var view = BuildViewMatrix();
 
         if (_basicEffect is not null)
         {
@@ -605,6 +587,13 @@ public sealed class GrimGame : Game
 
     private void HandleCameraInput(SnapshotView snapshotView, float deltaSeconds, KeyboardState keyboard, MouseState mouse)
     {
+        if (_editorModeActive)
+        {
+            UpdateEditorFreeCamera(snapshotView, keyboard, mouse, deltaSeconds);
+            _previousMouseState = mouse;
+            return;
+        }
+
         var desiredTarget = GetCameraCenter(snapshotView) + new Vector3(0f, 1.2f, 0f);
         if (!_cameraInitialized)
         {
@@ -641,8 +630,85 @@ public sealed class GrimGame : Game
         _previousMouseState = mouse;
     }
 
+    private void UpdateEditorFreeCamera(SnapshotView snapshotView, KeyboardState keyboard, MouseState mouse, float deltaSeconds)
+    {
+        if (!_editorFreeCameraInitialized)
+        {
+            InitializeEditorFreeCamera();
+        }
+
+        if (mouse.RightButton == ButtonState.Pressed && _previousMouseState.RightButton == ButtonState.Pressed)
+        {
+            var deltaX = mouse.X - _previousMouseState.X;
+            var deltaY = mouse.Y - _previousMouseState.Y;
+            _cameraYaw -= deltaX * 0.01f;
+            _cameraPitch -= deltaY * 0.01f;
+            _cameraPitch = MathHelper.Clamp(_cameraPitch, -1.3f, 1.3f);
+        }
+
+        var movement = Vector3.Zero;
+        var forward = GetCameraForwardVector();
+        var forwardHorizontal = GetHorizontalForwardVector();
+        var right = new Vector3(-forwardHorizontal.Z, 0f, forwardHorizontal.X);
+        var speed = (keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift)) ? 30f : 10f;
+
+        if (keyboard.IsKeyDown(Keys.W))
+        {
+            movement += forwardHorizontal;
+        }
+
+        if (keyboard.IsKeyDown(Keys.S))
+        {
+            movement -= forwardHorizontal;
+        }
+
+        if (keyboard.IsKeyDown(Keys.D))
+        {
+            movement += right;
+        }
+
+        if (keyboard.IsKeyDown(Keys.A))
+        {
+            movement -= right;
+        }
+
+        if (keyboard.IsKeyDown(Keys.E))
+        {
+            movement += Vector3.Up;
+        }
+
+        if (keyboard.IsKeyDown(Keys.Q))
+        {
+            movement -= Vector3.Up;
+        }
+
+        if (movement.LengthSquared() > 0.0001f)
+        {
+            movement.Normalize();
+            _editorFreeCameraPosition += movement * speed * deltaSeconds;
+        }
+
+        if (IsNewKeyPress(Keys.F, keyboard))
+        {
+            var selected = GetSelectedEntity(snapshotView);
+            if (selected is not null)
+            {
+                var focus = GetRenderPosition(selected);
+                _editorFreeCameraPosition = focus - (forward * 8f) + new Vector3(0f, 3f, 0f);
+                _editorStatusMessage = "Kamera auf Auswahl fokussiert";
+            }
+        }
+
+        _cameraTarget = _editorFreeCameraPosition + forward;
+    }
+
     private Vector3 ComputeCameraPosition()
     {
+        if (_editorModeActive)
+        {
+            return _editorFreeCameraPosition;
+        }
+
         var horizontal = MathF.Cos(_cameraPitch) * _cameraDistance;
         var y = MathF.Sin(_cameraPitch) * _cameraDistance;
         var x = MathF.Cos(_cameraYaw) * horizontal;
@@ -1143,42 +1209,63 @@ public sealed class GrimGame : Game
 
         var panelX = 14;
         var panelY = 122;
-        var panelWidth = 560;
-        var panelHeight = 88;
-        var panel = _editorModeActive ? new Color(21, 42, 34, 220) : new Color(30, 26, 18, 220);
-        var border = _editorModeActive ? new Color(95, 210, 160) : new Color(190, 156, 94);
+        var panelWidth = 760;
+        var panelHeight = 168;
+        var panel = new Color(21, 42, 34, 220);
+        var border = new Color(95, 210, 160);
 
         spriteBatch.Draw(pixel, new Rectangle(panelX, panelY, panelWidth, panelHeight), panel);
         spriteBatch.Draw(pixel, new Rectangle(panelX, panelY, panelWidth, 2), border);
         spriteBatch.Draw(pixel, new Rectangle(panelX, panelY + panelHeight - 2, panelWidth, 2), border);
 
-        var modeText = _editorModeActive ? "EDITOR MODE: ON" : "EDITOR MODE: OFF";
-        DrawText(spriteBatch, pixel, modeText, panelX + 10, panelY + 10, 2, Color.White);
-        DrawText(spriteBatch, pixel, "F1 TOGGLE  INS DUPLICATE  DEL TOGGLE DELETE  LMB AXIS DRAG  C/V SCALE  CTRL+Z/Y", panelX + 10, panelY + 36, 1, new Color(184, 212, 232));
-
-        var buttonRect = GetEditorToggleButtonRect();
-        var buttonColor = _editorModeActive ? new Color(58, 170, 122) : new Color(148, 110, 68);
-        var buttonBorder = _editorModeActive ? new Color(146, 248, 208) : new Color(238, 204, 158);
-        spriteBatch.Draw(pixel, buttonRect, buttonColor);
-        spriteBatch.Draw(pixel, new Rectangle(buttonRect.X, buttonRect.Y, buttonRect.Width, 2), buttonBorder);
-        spriteBatch.Draw(pixel, new Rectangle(buttonRect.X, buttonRect.Bottom - 2, buttonRect.Width, 2), buttonBorder);
-        DrawText(spriteBatch, pixel, _editorModeActive ? "EDITOR AUS" : "EDITOR AN", buttonRect.X + 12, buttonRect.Y + 8, 1, new Color(10, 14, 18));
+        DrawText(spriteBatch, pixel, "EDITOR MODE: ON", panelX + 10, panelY + 10, 2, Color.White);
+        DrawText(spriteBatch, pixel, "WASD FLY  Q/E UP-DOWN  RMB LOOK  F FOCUS", panelX + 10, panelY + 38, 2, new Color(184, 212, 232));
+        DrawText(spriteBatch, pixel, "TAB SELECT  [ ] PALETTE  INS PLACE  DEL DELETE  CTRL+Z/Y", panelX + 10, panelY + 56, 2, new Color(184, 212, 232));
 
         var selectedText = "SELECTED: NONE";
-        if (_editorModeActive)
+        var selected = GetSelectedEntity(snapshotView);
+        if (selected is not null)
         {
-            var selected = GetSelectedEntity(snapshotView);
-            if (selected is not null)
-            {
-                var pos = GetRenderPosition(selected);
-                selectedText = $"SELECTED: {selected.Id.Value.ToString("N")[..4].ToUpperInvariant()}  POS {pos.X:F1},{pos.Y:F1},{pos.Z:F1}  S {GetRenderScale(selected):F2}";
-            }
+            var pos = GetRenderPosition(selected);
+            selectedText = $"SELECTED: {selected.Id.Value.ToString("N")[..4].ToUpperInvariant()}  POS {pos.X:F1},{pos.Y:F1},{pos.Z:F1}  S {GetRenderScale(selected):F2}";
         }
 
-        DrawText(spriteBatch, pixel, selectedText, panelX + 10, panelY + 56, 1, new Color(206, 236, 228));
-        var pendingText = $"PENDING ADD: {_editorCreatedObjects.Count}  PENDING DEL: {_editorDeletedStaticIndices.Count}";
-        DrawText(spriteBatch, pixel, pendingText, panelX + 10, panelY + 72, 1, new Color(206, 236, 228));
-        DrawText(spriteBatch, pixel, _editorStatusMessage.ToUpperInvariant(), panelX + 10, panelY + 82, 1, new Color(168, 244, 194));
+        DrawText(spriteBatch, pixel, selectedText, panelX + 10, panelY + 82, 2, new Color(206, 236, 228));
+        var paletteModelId = GetCurrentPaletteModelId() ?? "NONE";
+        var paletteText = $"PALETTE: {paletteModelId.ToUpperInvariant()} [{Math.Min(_paletteIndex + 1, Math.Max(_paletteModelIds.Count, 1))}/{Math.Max(_paletteModelIds.Count, 1)}]";
+        DrawText(spriteBatch, pixel, paletteText, panelX + 10, panelY + 100, 2, new Color(206, 236, 228));
+        var placement = GetEditorPlacementPosition();
+        var pendingText = $"PLACE: {placement.X:F1},{placement.Y:F1},{placement.Z:F1}  ADD: {_editorCreatedObjects.Count}  DEL: {_editorDeletedStaticIndices.Count}";
+        DrawText(spriteBatch, pixel, pendingText, panelX + 10, panelY + 118, 2, new Color(206, 236, 228));
+        DrawText(spriteBatch, pixel, _editorStatusMessage.ToUpperInvariant(), panelX + 10, panelY + 140, 2, new Color(168, 244, 194));
+
+        DrawMeshPaletteList(spriteBatch, pixel);
+    }
+
+    private void DrawMeshPaletteList(SpriteBatch spriteBatch, Texture2D pixel)
+    {
+        var panelRect = GetMeshPalettePanelRect();
+        var panel = new Color(18, 28, 44, 220);
+        var border = new Color(108, 170, 230);
+        spriteBatch.Draw(pixel, panelRect, panel);
+        spriteBatch.Draw(pixel, new Rectangle(panelRect.X, panelRect.Y, panelRect.Width, 2), border);
+        spriteBatch.Draw(pixel, new Rectangle(panelRect.X, panelRect.Bottom - 2, panelRect.Width, 2), border);
+
+        DrawText(spriteBatch, pixel, "MESH PALETTE", panelRect.X + 10, panelRect.Y + 10, 2, Color.White);
+        DrawText(spriteBatch, pixel, "CLICK OR [ ] TO SELECT", panelRect.X + 10, panelRect.Y + 30, 2, new Color(186, 212, 238));
+
+        for (var i = 0; i < _paletteModelIds.Count; i++)
+        {
+            var rowRect = GetMeshPaletteEntryRect(i);
+            var isActive = i == _paletteIndex;
+            if (isActive)
+            {
+                spriteBatch.Draw(pixel, rowRect, new Color(66, 132, 196, 170));
+            }
+
+            var label = $"{i + 1:00} {FormatModelIdForHud(_paletteModelIds[i])}";
+            DrawText(spriteBatch, pixel, label, rowRect.X + 8, rowRect.Y + 3, 2, isActive ? new Color(250, 252, 255) : new Color(196, 218, 242));
+        }
     }
 
     private void CreateStaticObjectFromSelected(EntitySnapshot selected)
@@ -1192,6 +1279,51 @@ public sealed class GrimGame : Game
 
         _editorCreatedObjects.Add(created);
         _editorStatusMessage = "Neues Static Object erstellt (pending save)";
+    }
+
+    private void CreateStaticObjectFromPalette(string modelId)
+    {
+        var placement = GetEditorPlacementPosition();
+        var created = new EditorCreatedStaticObject(
+            placement,
+            MathF.Atan2(GetHorizontalForwardVector().Z, GetHorizontalForwardVector().X),
+            1f,
+            modelId);
+
+        _editorCreatedObjects.Add(created);
+        _editorStatusMessage = $"Neues Objekt platziert: {modelId}";
+    }
+
+    private void CyclePalette(int delta)
+    {
+        if (_paletteModelIds.Count == 0)
+        {
+            _editorStatusMessage = "Palette leer";
+            return;
+        }
+
+        _paletteIndex = (_paletteIndex + delta) % _paletteModelIds.Count;
+        if (_paletteIndex < 0)
+        {
+            _paletteIndex += _paletteModelIds.Count;
+        }
+
+        _editorStatusMessage = $"Palette: {_paletteModelIds[_paletteIndex]}";
+    }
+
+    private string? GetCurrentPaletteModelId()
+    {
+        if (_paletteModelIds.Count == 0)
+        {
+            return null;
+        }
+
+        if (_paletteIndex < 0 || _paletteIndex >= _paletteModelIds.Count)
+        {
+            _paletteIndex = 0;
+        }
+
+        return _paletteModelIds[_paletteIndex];
     }
 
     private void ToggleDeleteSelectedStaticObject(EntitySnapshot selected)
@@ -1215,9 +1347,47 @@ public sealed class GrimGame : Game
         }
     }
 
-    private Rectangle GetEditorToggleButtonRect()
+    private Rectangle GetMeshPalettePanelRect()
     {
-        return new Rectangle(430, 130, 128, 24);
+        var height = 62 + (_paletteModelIds.Count * 24);
+        return new Rectangle(790, 122, 530, Math.Max(height, 100));
+    }
+
+    private Rectangle GetMeshPaletteEntryRect(int index)
+    {
+        var panel = GetMeshPalettePanelRect();
+        return new Rectangle(panel.X + 10, panel.Y + 58 + (index * 24), panel.Width - 20, 20);
+    }
+
+    private bool TrySelectPaletteEntryByMouse(MouseState mouse)
+    {
+        if (_paletteModelIds.Count == 0)
+        {
+            return false;
+        }
+
+        var panel = GetMeshPalettePanelRect();
+        var index = EditorPaletteHitTest.TryGetPaletteIndex(
+            mouse.X,
+            mouse.Y,
+            panel.X,
+            panel.Y,
+            panel.Width,
+            _paletteModelIds.Count);
+
+        if (!index.HasValue)
+        {
+            return false;
+        }
+
+        _paletteIndex = index.Value;
+        _editorStatusMessage = $"Palette: {_paletteModelIds[index.Value]}";
+        return true;
+    }
+
+    private static string FormatModelIdForHud(string modelId)
+    {
+        return modelId.Replace('_', '-').ToUpperInvariant();
     }
 
     private EntitySnapshot? GetSelectedEntity(SnapshotView snapshotView)
@@ -1237,7 +1407,7 @@ public sealed class GrimGame : Game
             GraphicsDevice.Viewport.AspectRatio,
             0.1f,
             250f);
-        var view = Matrix.CreateLookAt(ComputeCameraPosition(), _cameraTarget, Vector3.Up);
+        var view = BuildViewMatrix();
 
         var clicked = new Vector2(mouse.X, mouse.Y);
         EntitySnapshot? bestEntity = null;
@@ -1490,7 +1660,7 @@ public sealed class GrimGame : Game
             GraphicsDevice.Viewport.AspectRatio,
             0.1f,
             250f);
-        var view = Matrix.CreateLookAt(ComputeCameraPosition(), _cameraTarget, Vector3.Up);
+        var view = BuildViewMatrix();
 
         var projected = GraphicsDevice.Viewport.Project(worldPoint, projection, view, Matrix.Identity);
         if (projected.Z is < 0f or > 1f)
@@ -1525,7 +1695,7 @@ public sealed class GrimGame : Game
             GraphicsDevice.Viewport.AspectRatio,
             0.1f,
             250f);
-        var view = Matrix.CreateLookAt(ComputeCameraPosition(), _cameraTarget, Vector3.Up);
+        var view = BuildViewMatrix();
 
         var near = GraphicsDevice.Viewport.Unproject(new Vector3(mouse.X, mouse.Y, 0f), projection, view, Matrix.Identity);
         var far = GraphicsDevice.Viewport.Unproject(new Vector3(mouse.X, mouse.Y, 1f), projection, view, Matrix.Identity);
@@ -1545,6 +1715,77 @@ public sealed class GrimGame : Game
 
         worldPoint = near + (direction * t);
         return true;
+    }
+
+    private void InitializeEditorFreeCamera()
+    {
+        _editorFreeCameraPosition = ComputeOrbitCameraPosition();
+        _cameraPitch = MathHelper.Clamp(_cameraPitch, -1.3f, 1.3f);
+        _cameraTarget = _editorFreeCameraPosition + GetCameraForwardVector();
+        _editorFreeCameraInitialized = true;
+    }
+
+    private Matrix BuildViewMatrix()
+    {
+        var cameraPosition = ComputeCameraPosition();
+        var cameraTarget = _editorModeActive ? cameraPosition + GetCameraForwardVector() : _cameraTarget;
+        return Matrix.CreateLookAt(cameraPosition, cameraTarget, Vector3.Up);
+    }
+
+    private Vector3 ComputeOrbitCameraPosition()
+    {
+        var horizontal = MathF.Cos(_cameraPitch) * _cameraDistance;
+        var y = MathF.Sin(_cameraPitch) * _cameraDistance;
+        var x = MathF.Cos(_cameraYaw) * horizontal;
+        var z = MathF.Sin(_cameraYaw) * horizontal;
+        return _cameraTarget + new Vector3(x, y, z);
+    }
+
+    private Vector3 GetCameraForwardVector()
+    {
+        var horizontal = MathF.Cos(_cameraPitch);
+        var x = -MathF.Cos(_cameraYaw) * horizontal;
+        var y = -MathF.Sin(_cameraPitch);
+        var z = -MathF.Sin(_cameraYaw) * horizontal;
+        var forward = new Vector3(x, y, z);
+        if (forward.LengthSquared() < 0.0001f)
+        {
+            return -Vector3.UnitZ;
+        }
+
+        forward.Normalize();
+        return forward;
+    }
+
+    private Vector3 GetHorizontalForwardVector()
+    {
+        var forward = GetCameraForwardVector();
+        var horizontal = new Vector3(forward.X, 0f, forward.Z);
+        if (horizontal.LengthSquared() < 0.0001f)
+        {
+            return -Vector3.UnitZ;
+        }
+
+        horizontal.Normalize();
+        return horizontal;
+    }
+
+    private Vector3 GetEditorPlacementPosition()
+    {
+        var cameraPosition = ComputeCameraPosition();
+        var forward = GetCameraForwardVector();
+        if (MathF.Abs(forward.Y) > 0.0001f)
+        {
+            var t = -cameraPosition.Y / forward.Y;
+            if (t > 0f)
+            {
+                var planeHit = cameraPosition + (forward * t);
+                return new Vector3(planeHit.X, 0f, planeHit.Z);
+            }
+        }
+
+        var fallback = cameraPosition + (GetHorizontalForwardVector() * 8f);
+        return new Vector3(fallback.X, 0f, fallback.Z);
     }
 
     private bool IsLeftClick(MouseState mouse)

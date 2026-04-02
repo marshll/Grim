@@ -1,9 +1,29 @@
 {
   "models": [
     {
+      "id": "ground_tile_v1",
+      "gltfPath": "ground_tile_v1/ground_tile_v1.gltf",
+      "scale": 1
+    },
+    {
       "id": "obelisk_v1",
       "gltfPath": "obelisk_v1/obelisk_v1.gltf",
       "scale": 1.25
+    },
+    {
+      "id": "pillar_v1",
+      "gltfPath": "pillar_v1/pillar_v1.gltf",
+      "scale": 1
+    },
+    {
+      "id": "rock_v1",
+      "gltfPath": "rock_v1/rock_v1.gltf",
+      "scale": 1
+    },
+    {
+      "id": "wall_v1",
+      "gltfPath": "wall_v1/wall_v1.gltf",
+      "scale": 1
     }
   ]
 }

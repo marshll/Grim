@@ -17,7 +17,7 @@ MMO-first C# game foundation with a MonoGame client host, a headless server skel
 
 - .NET SDK 8.0+
 - On Linux for DesktopGL runtime: SDL2 and OpenAL packages
-- jq (optional, for content validation script)
+- Blender or fbx2gltf (optional, only for FBX import conversion)
 
 ## Build
 
@@ -41,6 +41,10 @@ MMO-first C# game foundation with a MonoGame client host, a headless server skel
 
 	dotnet run --project src/Grim.Core/Grim.Core.csproj -- --client alpha --account account_alpha --host 127.0.0.1 --port 7777
 
+- Start client in editor mode:
+
+	dotnet run --project src/Grim.Core/Grim.Core.csproj -- --editor
+
 - Start two clients against one server (use separate terminals):
 
 	dotnet run --project src/Grim.Core/Grim.Core.csproj -- --client alpha --account account_alpha
@@ -63,6 +67,84 @@ Client 3D debug controls:
 - `Right Mouse Drag`: orbit camera
 - `Mouse Wheel`: zoom in/out
 - `Space`: snap camera behind player movement direction
+
+Editor controls (current foundation):
+
+- Start with `--editor`
+- Editor mode is active immediately when started with `--editor`
+- `W/A/S/D`: fly editor camera on X/Z plane
+- `Q/E`: move editor camera down/up
+- `Right Mouse Drag`: look around in editor mode
+- `F`: focus camera on selected object
+- `Tab`: select next object
+- Mesh palette panel shows all registered models on screen
+- Click a mesh entry to make it the active placement model
+- `[` / `]`: cycle active model palette entry
+- `Insert`: place the current palette model on the ground under the camera aim
+- `LMB` on gizmo axis: drag selected object on X/Y/Z axis
+- `I/J/K/L`: move selected object on X/Z plane
+- `U/O`: move selected object on Y axis
+- `Z/X`: rotate selected object (yaw)
+- `C/V`: decrease/increase selected object scale
+- `Shift`: faster move speed while transforming
+- `Ctrl+Z`: undo last editor command
+- `Ctrl+Y` or `Ctrl+Shift+Z`: redo editor command
+- `F5`: save current editor overrides to `content/zones/start_zone.json`
+
+Placeholder level-blockout workflow:
+
+- Generate starter meshes directly in .NET:
+
+	dotnet run --project src/Grim.Tools/Grim.Tools.csproj -- models scaffold
+
+- Optional: generate only selected shapes:
+
+	dotnet run --project src/Grim.Tools/Grim.Tools.csproj -- models scaffold --shapes ground_tile_v1,wall_v1
+
+- The scaffold currently creates `ground_tile_v1`, `rock_v1`, `wall_v1`, and `pillar_v1` and upserts them into `content/models/registry.json`.
+- Use the editor palette (`[` / `]`) to switch between registered models before placing objects.
+
+FBX import pipeline (FBX -> glTF):
+
+- Recommended structure:
+
+	content/models/_imports/<asset_name>/<asset_name>.fbx      (source)
+	content/models/<asset_name>/<asset_name>.gltf              (runtime target)
+
+- Add import jobs to `content/models/import-manifest.json`:
+
+	{
+	  "imports": [
+	    {
+	      "id": "pillar_v1",
+	      "sourceFbx": "content/models/_imports/pillar_v1/pillar_v1.fbx",
+	      "targetDir": "pillar_v1",
+	      "outputFile": "pillar_v1.gltf",
+	      "scale": 1.0
+	    }
+	  ]
+	}
+
+- Import all jobs and update registry automatically:
+
+	dotnet run --project src/Grim.Tools/Grim.Tools.csproj -- models import
+
+- Import one model by ID:
+
+	dotnet run --project src/Grim.Tools/Grim.Tools.csproj -- models import --id pillar_v1
+
+- Legacy direct conversion is still available:
+
+	dotnet run --project src/Grim.Tools/Grim.Tools.csproj -- models convert content/models/my_mesh/my_mesh.fbx content/models/my_mesh/my_mesh.gltf
+
+- Place the `modelId` on static objects in `content/zones/start_zone.json`.
+- Run .NET validation (cross-platform):
+
+	dotnet run --project src/Grim.Tools/Grim.Tools.csproj -- content validate
+
+- Legacy shell validation is still available temporarily:
+
+	./tools/validate-content.sh
 
 ## Current Scope
 

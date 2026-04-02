@@ -17,5 +17,6 @@
     <ProjectReference Include="..\..\src\Grim.Client\Grim.Client.csproj" />
     <ProjectReference Include="..\..\src\Grim.Shared\Grim.Shared.csproj" />
     <ProjectReference Include="..\..\src\Grim.Server\Grim.Server.csproj" />
+    <ProjectReference Include="..\..\src\Grim.Tools\Grim.Tools.csproj" />
   </ItemGroup>
 </Project>

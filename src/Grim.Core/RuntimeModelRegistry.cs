@@ -100,6 +100,11 @@ public sealed class RuntimeModelRegistry
         }
     }
 
+    public IReadOnlyList<string> GetModelIds()
+    {
+        return _entries.Keys.OrderBy(item => item, StringComparer.Ordinal).ToArray();
+    }
+
     private static string? FindRepositoryRoot()
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);

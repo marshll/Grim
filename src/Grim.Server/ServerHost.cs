@@ -18,9 +18,10 @@ public sealed class ServerHost
         var zone = LoadStartZone();
         _spawnPoint = zone.SpawnPoint;
 
-        foreach (var staticObject in zone.StaticObjects)
+        for (var i = 0; i < zone.StaticObjects.Count; i++)
         {
-            _sessions.RegisterStaticEntity(staticObject.Position, staticObject.YawRadians, staticObject.ModelId);
+            var staticObject = zone.StaticObjects[i];
+            _sessions.RegisterStaticEntity(staticObject.Position, staticObject.YawRadians, staticObject.ModelId, i);
         }
     }
 

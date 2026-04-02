@@ -14,7 +14,7 @@ public sealed record MovementIntentMessage(float MoveX, float MoveZ, float YawRa
 
 public sealed record Vector3Snapshot(float X, float Y, float Z);
 
-public sealed record EntitySnapshot(EntityId Id, Guid OwnerSessionId, Vector3Snapshot Position, float YawRadians, string? ModelId = null);
+public sealed record EntitySnapshot(EntityId Id, Guid OwnerSessionId, Vector3Snapshot Position, float YawRadians, string? ModelId = null, int? ZoneStaticIndex = null);
 
 public sealed record WorldSnapshot(long Tick, IReadOnlyList<EntitySnapshot> Entities);
 

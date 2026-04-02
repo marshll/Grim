@@ -2,18 +2,14 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CONTENT_DIR="${ROOT_DIR}/content"
+TOOLS_PROJECT="${ROOT_DIR}/src/Grim.Tools/Grim.Tools.csproj"
 
-echo "Validating content files in ${CONTENT_DIR}"
+echo "DEPRECATED: tools/validate-content.sh"
+echo "Use: dotnet run --project src/Grim.Tools/Grim.Tools.csproj -- content validate"
 
-if ! command -v jq >/dev/null 2>&1; then
-  echo "jq is required for validation. Install jq and retry."
+if [[ ! -f "${TOOLS_PROJECT}" ]]; then
+  echo "Grim.Tools project not found: ${TOOLS_PROJECT}"
   exit 1
 fi
 
-find "${CONTENT_DIR}" -type f -name "*.json" -print0 | while IFS= read -r -d '' file; do
-  jq -e '.id and (.id | type == "string") and (.id | length > 0)' "${file}" >/dev/null
-  echo "OK: ${file}"
-done
-
-echo "Validation complete"
+dotnet run --project "${TOOLS_PROJECT}" -- content validate --repo-root "${ROOT_DIR}"
